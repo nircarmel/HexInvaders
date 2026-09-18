@@ -1919,6 +1919,13 @@ class NetworkManager {
     setupConnection() {
         this.conn.on('open', () => {
             this.connected = true;
+            if (this.isHost && this.game) {
+                // Host sends config to guest immediately upon connection
+                this.sendData({
+                    type: 'CONFIG',
+                    config: this.game.config
+                });
+            }
             if (this.ui) this.ui.updateHUD();
         });
 
@@ -1939,6 +1946,13 @@ class NetworkManager {
     }
 
     receiveData(data) {
+        if (data.type === 'CONFIG') {
+            if (!this.isHost && window.onReceiveNetworkConfig) {
+                window.onReceiveNetworkConfig(data.config);
+            }
+            return;
+        }
+
         if (!this.game || !this.ui) return;
 
         if (data.type === 'DEPLOY') {
@@ -2132,10 +2146,25 @@ document.addEventListener('DOMContentLoaded', () => {
     if (guestHostId) {
         mainMenu.classList.add('hidden');
         configModal.classList.add('hidden');
-        uiLayer.classList.remove('hidden');
+
+        // Show connecting overlay instead of immediate game
+        onlineModal.classList.remove('hidden');
+        const mContent = document.querySelector('#online-modal .menu-content');
+        if (mContent) mContent.innerHTML = '<h2>Connecting...</h2><p>Waiting for Host Rules...</p>';
+
         GLOBAL_MODE = 'ONLINE';
         GLOBAL_NETWORK = new NetworkManager(guestHostId);
-        launchGame();
+
+        // Wait for config from network instead of launching immediately
+        window.onReceiveNetworkConfig = (remoteConfig) => {
+            onlineModal.classList.add('hidden');
+            uiLayer.classList.remove('hidden');
+            launchGame(remoteConfig);
+            if (GLOBAL_NETWORK) {
+                GLOBAL_NETWORK.bindEngines(GLOBAL_GAME, GLOBAL_UI);
+                if (GLOBAL_NETWORK.ui) GLOBAL_NETWORK.ui.updateHUD();
+            }
+        };
     } else {
         // default bootup, hide config for now
         configModal.classList.add('hidden');
@@ -2156,13 +2185,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
     document.getElementById('btn-mode-online').addEventListener('click', () => {
         mainMenu.classList.add('hidden');
-        onlineModal.classList.remove('hidden');
+        configModal.classList.remove('hidden');
         GLOBAL_MODE = 'ONLINE';
-
-        GLOBAL_NETWORK = new NetworkManager();
-        GLOBAL_NETWORK.hostGame();
-
-        launchGame();
     });
 
     // Map Radio configurations to Custom Input row visibility
@@ -2180,39 +2204,53 @@ document.addEventListener('DOMContentLoaded', () => {
     // 3. Bind the traditional Local Start (proceeding from Config screen)
     document.getElementById('btn-start-game').addEventListener('click', () => {
         configModal.classList.add('hidden');
-        uiLayer.classList.remove('hidden');
+
+        if (GLOBAL_MODE === 'ONLINE') {
+            onlineModal.classList.remove('hidden');
+            GLOBAL_NETWORK = new NetworkManager();
+            GLOBAL_NETWORK.hostGame();
+        } else {
+            uiLayer.classList.remove('hidden');
+        }
+
         launchGame();
     });
 
     window.restartCurrentGame = launchGame;
-    function launchGame() {
-        // Read configs (or use defaults if bypassed by Online guest)
-        let boardW = 30;
-        let boardH = 15;
-        const dimsRadio = document.querySelector('input[name="cfg-dims"]:checked');
-        if (dimsRadio) {
-            if (dimsRadio.value === 'CUSTOM') {
-                boardW = parseInt(document.getElementById('cfg-width').value) || 40;
-                boardH = parseInt(document.getElementById('cfg-height').value) || 20;
-            } else {
-                const s = dimsRadio.value.split(',');
-                boardW = parseInt(s[0]);
-                boardH = parseInt(s[1]);
-            }
-        }
+    function launchGame(overrideConfig = null) {
+        let config;
 
-        const config = {
-            type: document.querySelector('input[name="cfg-type"]:checked') ? document.querySelector('input[name="cfg-type"]:checked').value : 'INVADE',
-            mode: document.querySelector('input[name="cfg-mode"]:checked') ? document.querySelector('input[name="cfg-mode"]:checked').value : 'STANDARD',
-            powerMode: document.querySelector('input[name="cfg-powerMode"]:checked') ? document.querySelector('input[name="cfg-powerMode"]:checked').value : 'DEPLETING',
-            width: boardW,
-            height: boardH,
-            credits: parseInt(document.getElementById('cfg-credits').value) || 50,
-            flagCost: parseInt(document.getElementById('cfg-flagCost').value) || 10,
-            barricadeCost: parseInt(document.getElementById('cfg-barricadeCost').value) || 5,
-            maxStrength: parseInt(document.getElementById('cfg-maxStrength').value) || 10,
-            maxSpeed: parseInt(document.getElementById('cfg-maxSpeed').value) || 5
-        };
+        if (overrideConfig) {
+            config = overrideConfig;
+        } else {
+            // Read configs (or use defaults if bypassed by Online guest)
+            let boardW = 30;
+            let boardH = 15;
+            const dimsRadio = document.querySelector('input[name="cfg-dims"]:checked');
+            if (dimsRadio) {
+                if (dimsRadio.value === 'CUSTOM') {
+                    boardW = parseInt(document.getElementById('cfg-width').value) || 40;
+                    boardH = parseInt(document.getElementById('cfg-height').value) || 20;
+                } else {
+                    const s = dimsRadio.value.split(',');
+                    boardW = parseInt(s[0]);
+                    boardH = parseInt(s[1]);
+                }
+            }
+
+            config = {
+                type: document.querySelector('input[name="cfg-type"]:checked') ? document.querySelector('input[name="cfg-type"]:checked').value : 'INVADE',
+                mode: document.querySelector('input[name="cfg-mode"]:checked') ? document.querySelector('input[name="cfg-mode"]:checked').value : 'STANDARD',
+                powerMode: document.querySelector('input[name="cfg-powerMode"]:checked') ? document.querySelector('input[name="cfg-powerMode"]:checked').value : 'DEPLETING',
+                width: boardW,
+                height: boardH,
+                credits: parseInt(document.getElementById('cfg-credits').value) || 50,
+                flagCost: parseInt(document.getElementById('cfg-flagCost').value) || 10,
+                barricadeCost: parseInt(document.getElementById('cfg-barricadeCost').value) || 5,
+                maxStrength: parseInt(document.getElementById('cfg-maxStrength').value) || 10,
+                maxSpeed: parseInt(document.getElementById('cfg-maxSpeed').value) || 5
+            };
+        }
         configModal.classList.add('hidden');
         uiLayer.classList.remove('hidden');
 

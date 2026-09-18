@@ -85,6 +85,13 @@ class NetworkManager {
     setupConnection() {
         this.conn.on('open', () => {
             this.connected = true;
+            if (this.isHost && this.game) {
+                // Host sends config to guest immediately upon connection
+                this.sendData({
+                    type: 'CONFIG',
+                    config: this.game.config
+                });
+            }
             if (this.ui) this.ui.updateHUD();
         });
 
@@ -105,6 +112,13 @@ class NetworkManager {
     }
 
     receiveData(data) {
+        if (data.type === 'CONFIG') {
+            if (!this.isHost && window.onReceiveNetworkConfig) {
+                window.onReceiveNetworkConfig(data.config);
+            }
+            return;
+        }
+
         if (!this.game || !this.ui) return;
 
         if (data.type === 'DEPLOY') {
