@@ -225,7 +225,7 @@ export class UIManager {
             const centerRow = (this.game.rows - 1) / 2;
 
             // X placed offset from the clicked hex so it doesn't cover it, towards the center
-            let targetCol = this._contextTarget.col < this.game.cols / 2 ? this._contextTarget.col + 3 : this._contextTarget.col - 3;
+            let targetCol = this._contextTarget.col < this.game.cols / 2 ? this._contextTarget.col + 7.5 : this._contextTarget.col - 7.5;
 
             const pt = hexMath.hexToPixel(targetCol, centerRow, this.render.hexRadius);
 
@@ -531,15 +531,15 @@ export class UIManager {
                 const hue = isFlag ? 200 : (1 - Math.pow(ratio, 0.7)) * 120; // 200 is light blue for flags, or green/red scaling for units
                 btn.style.backgroundColor = `hsla(${hue}, 80%, 40%, 0.6)`;
                 btn.style.border = `1px solid hsla(${hue}, 80%, 60%, 0.5)`;
-                btn.style.width = '35px';
-                btn.style.height = '35px';
-                btn.style.borderRadius = '6px';
+                btn.style.width = '26px';
+                btn.style.height = '26px';
+                btn.style.borderRadius = '5px';
                 btn.style.cursor = 'pointer';
                 btn.style.display = 'flex';
                 btn.style.flexDirection = 'column';
                 btn.style.alignItems = 'center';
                 btn.style.justifyContent = 'center';
-                btn.style.lineHeight = '1.1';
+                btn.style.lineHeight = '1';
                 btn.style.transition = 'all 0.15s ease-out';
                 btn.style.userSelect = 'none';
                 const currentCredits = this.game.credits[this.game.activeTeam];
@@ -551,8 +551,8 @@ export class UIManager {
 
                 btn.innerHTML = ``;
 
-                const sizeP = maxPower > 0 ? 0.5 + (p / maxPower) * 0.5 : 0;
-                const sizeS = 0.5 + (s / maxSpeed) * 0.5;
+                const sizeP = maxPower > 0 ? 0.4 + (p / maxPower) * 0.35 : 0;
+                const sizeS = 0.4 + (s / maxSpeed) * 0.35;
 
                 btn.addEventListener('mouseenter', () => {
                     document.getElementById('preview-cost').innerHTML = `Cost: ${cost}`;
