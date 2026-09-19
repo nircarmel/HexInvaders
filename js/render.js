@@ -310,8 +310,8 @@ export class RenderEngine {
                 let lineWidth = 1;
 
                 // Base zone colors
-                if (col === 0) fill = 'rgba(59, 130, 246, 0.1)'; // Blue zone
-                if (col === this.game.cols - 1) fill = 'rgba(239, 68, 68, 0.1)'; // Red zone
+                if (col === 0) fill = 'rgba(59, 130, 246, 0.45)'; // Brighter Blue zone
+                if (col === this.game.cols - 1) fill = 'rgba(239, 68, 68, 0.45)'; // Brighter Red zone
 
                 // Barricade styling
                 if (tile.isBarricade) {
