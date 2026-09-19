@@ -1310,7 +1310,7 @@ class RenderEngine {
                 this.ctx.fill();
             } else if (unit.type === 'observation') {
                 const eyeWidth = r * 0.55;
-                const eyeHeight = r * 0.45;
+                const eyeHeight = r * 0.75;
                 const pupilRadius = r * 0.18;
 
                 this.ctx.strokeStyle = '#fff';
