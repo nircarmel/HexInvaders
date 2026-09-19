@@ -1465,6 +1465,31 @@ class UIManager {
         if (this.unitTooltip) this.unitTooltip.classList.add('hidden');
     }
 
+    playTickSound() {
+        if (!this.audioCtx) {
+            this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        if (this.audioCtx.state === 'suspended') {
+            this.audioCtx.resume();
+        }
+
+        const osc = this.audioCtx.createOscillator();
+        const gain = this.audioCtx.createGain();
+
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(800, this.audioCtx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(100, this.audioCtx.currentTime + 0.1);
+
+        gain.gain.setValueAtTime(0.5, this.audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, this.audioCtx.currentTime + 0.1);
+
+        osc.connect(gain);
+        gain.connect(this.audioCtx.destination);
+
+        osc.start();
+        osc.stop(this.audioCtx.currentTime + 0.1);
+    }
+
     updateHUDTimer(timeRemaining) {
         const timerDiv = document.getElementById('turn-timer');
         if (!timerDiv) return;
@@ -1473,6 +1498,10 @@ class UIManager {
             timerDiv.classList.remove('hidden');
             timerDiv.style.color = timeRemaining <= 5 ? '#ef4444' : 'white';
             timerDiv.innerText = `${timeRemaining}s`;
+
+            if (timeRemaining > 0 && timeRemaining <= 3) {
+                this.playTickSound();
+            }
         } else {
             timerDiv.classList.add('hidden');
         }
