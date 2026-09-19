@@ -1310,7 +1310,7 @@ class RenderEngine {
                 this.ctx.fill();
             } else if (unit.type === 'observation') {
                 const bRadius = r * 0.22;
-                const bSpacing = r * 0.35;
+                const bSpacing = r * 0.23;
 
                 this.ctx.strokeStyle = '#fff';
                 this.ctx.lineWidth = Math.max(2, r * 0.15);
@@ -1324,12 +1324,6 @@ class RenderEngine {
                 // Right lens
                 this.ctx.beginPath();
                 this.ctx.arc(x + bSpacing, y, bRadius, 0, Math.PI * 2);
-                this.ctx.stroke();
-
-                // Bridge
-                this.ctx.beginPath();
-                this.ctx.moveTo(x - bSpacing + bRadius, y);
-                this.ctx.lineTo(x + bSpacing - bRadius, y);
                 this.ctx.stroke();
             } else {
                 // Ensure text sizes dynamically scale exactly to the current render diameter
