@@ -1625,16 +1625,9 @@ class UIManager {
             let cssX = screenX * scaleX;
             let cssY = screenY * scaleY;
 
-            // Dead center projection request strictly applied
-            let targetLeft = (rect.width / 2) - (actualWidth / 2);
-            let targetTop = (rect.height / 2) - (actualHeight / 2);
-
-            // Confine bounds securely to prevent clipping inside the container organically
-            targetLeft = Math.max(10, Math.min(targetLeft, rect.width - actualWidth - 10));
-            targetTop = Math.max(10, Math.min(targetTop, rect.height - actualHeight - 10));
-
-            this.contextMenu.style.left = `${targetLeft}px`;
-            this.contextMenu.style.top = `${targetTop}px`;
+            this.contextMenu.style.left = '50%';
+            this.contextMenu.style.top = '50%';
+            this.contextMenu.style.transform = 'translate(-50%, -50%)';
         }
     }
 
