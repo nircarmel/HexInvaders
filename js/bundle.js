@@ -1939,28 +1939,32 @@ class NetworkManager {
     setupConnection() {
         const handleOpen = () => {
             this.connected = true;
-            if (this.isHost && this.game) {
-                // Host sends config to guest
-                this.sendData({
-                    type: 'CONFIG',
-                    config: this.game.config
-                });
 
-                // Remove game from open lobbies
-                if (this.peer && this.peer.id) {
-                    fetch('/api/lobby', {
-                        method: 'DELETE',
-                        body: JSON.stringify({ hostId: this.peer.id }),
-                        headers: { 'Content-Type': 'application/json' }
-                    }).catch(console.error);
+            // WebRTC data channels (especially on Firefox) can drop initial payloads if sent immediately
+            setTimeout(() => {
+                if (this.isHost && this.game) {
+                    // Host sends config to guest
+                    this.sendData({
+                        type: 'CONFIG',
+                        config: this.game.config
+                    });
+
+                    // Remove game from open lobbies
+                    if (this.peer && this.peer.id) {
+                        fetch('/api/lobby', {
+                            method: 'DELETE',
+                            body: JSON.stringify({ hostId: this.peer.id }),
+                            headers: { 'Content-Type': 'application/json' }
+                        }).catch(console.error);
+                    }
+                } else {
+                    this.sendData({
+                        type: 'GUEST_JOIN',
+                        name: this.guestName
+                    });
                 }
-            } else {
-                this.sendData({
-                    type: 'GUEST_JOIN',
-                    name: this.guestName
-                });
-            }
-            if (this.ui) this.ui.updateHUD();
+                if (this.ui) this.ui.updateHUD();
+            }, 500); // 500ms stabilization delay
         };
 
         if (this.conn.open) {
