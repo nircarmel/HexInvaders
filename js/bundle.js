@@ -780,14 +780,12 @@ class HexGame {
 
         if (this.config.mode === 'NEARBY') {
             const maxRange = this.config.maxSpeed + 1;
-            const targetAxial = hexMath.offsetToAxial(col, row);
 
             for (let c = 0; c < this.cols; c++) {
                 for (let r = 0; r < this.rows; r++) {
                     const t = this.getTile(c, r);
                     if (t.unit && t.unit.team === perspective) {
-                        const friendlyAxial = hexMath.offsetToAxial(c, r);
-                        if (hexMath.axialDistance(targetAxial, friendlyAxial) <= maxRange) {
+                        if (hexMath.offsetDistance(col, row, c, r) <= maxRange) {
                             return false; // Found a friendly unit close enough
                         }
                     }
