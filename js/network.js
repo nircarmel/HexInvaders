@@ -78,10 +78,7 @@ class NetworkManager {
 
             document.getElementById('online-modal').classList.add('hidden');
             if (this.game) {
-                this.game.logSystem("Opponent Connected! Game Start! You are BLUE.");
-                if (this.game.timerDuration > 0) {
-                    this.game.startTimer();
-                }
+                this.game.logSystem("Opponent Connected! Initializing Channel...");
             }
             if (this.ui) this.ui.updateHUD();
         });
@@ -137,6 +134,11 @@ class NetworkManager {
                             headers: { 'Content-Type': 'application/json' }
                         }).catch(console.error);
                     }
+
+                    if (this.game.timerDuration > 0) {
+                        this.game.startTimer();
+                    }
+                    this.game.logSystem("Game Start! You are BLUE.");
                 } else {
                     this.sendData({
                         type: 'GUEST_JOIN',
