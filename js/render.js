@@ -218,9 +218,28 @@ export class RenderEngine {
                 this.ctx.lineTo(x - fw / 2 + 2, y - ph / 2 + fh);
                 this.ctx.fill();
             } else if (unit.type === 'observation') {
-                const fontSize = r * 1.0;
-                this.ctx.font = `${fontSize}px Arial`;
-                this.ctx.fillText('🔭', x, y + r * 0.1);
+                const bRadius = r * 0.22;
+                const bSpacing = r * 0.35;
+
+                this.ctx.strokeStyle = '#fff';
+                this.ctx.lineWidth = Math.max(2, r * 0.15);
+                this.ctx.lineCap = 'round';
+
+                // Left lens
+                this.ctx.beginPath();
+                this.ctx.arc(x - bSpacing, y, bRadius, 0, Math.PI * 2);
+                this.ctx.stroke();
+
+                // Right lens
+                this.ctx.beginPath();
+                this.ctx.arc(x + bSpacing, y, bRadius, 0, Math.PI * 2);
+                this.ctx.stroke();
+
+                // Bridge
+                this.ctx.beginPath();
+                this.ctx.moveTo(x - bSpacing + bRadius, y);
+                this.ctx.lineTo(x + bSpacing - bRadius, y);
+                this.ctx.stroke();
             } else {
                 // Ensure text sizes dynamically scale exactly to the current render diameter
                 // Perfectly centered without dots
