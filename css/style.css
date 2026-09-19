@@ -361,7 +361,7 @@ button:disabled {
     padding: 1rem;
     pointer-events: auto;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-    transition: left 0.1s ease, top 0.1s ease;
+    
 }
 
 #context-header {
