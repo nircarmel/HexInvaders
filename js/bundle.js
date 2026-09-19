@@ -1890,8 +1890,18 @@ class NetworkManager {
     }
 
     hostGame() {
-        // Assumes PeerJS is loaded as global 'Peer'
-        this.peer = new Peer();
+        const peerConfig = {
+            config: {
+                'iceServers': [
+                    { 'urls': 'stun:stun.l.google.com:19302' },
+                    { 'urls': 'stun:stun1.l.google.com:19302' },
+                    { 'urls': 'stun:stun2.l.google.com:19302' },
+                    { 'urls': 'stun:stun3.l.google.com:19302' },
+                    { 'urls': 'stun:stun4.l.google.com:19302' }
+                ]
+            }
+        };
+        this.peer = new Peer(peerConfig);
         this.peer.on('open', (id) => {
             const link = `${window.location.origin}${window.location.pathname}?host=${id}`;
             document.getElementById('host-link-input').value = link;
@@ -1924,7 +1934,18 @@ class NetworkManager {
     }
 
     joinGame(hostId) {
-        this.peer = new Peer();
+        const peerConfig = {
+            config: {
+                'iceServers': [
+                    { 'urls': 'stun:stun.l.google.com:19302' },
+                    { 'urls': 'stun:stun1.l.google.com:19302' },
+                    { 'urls': 'stun:stun2.l.google.com:19302' },
+                    { 'urls': 'stun:stun3.l.google.com:19302' },
+                    { 'urls': 'stun:stun4.l.google.com:19302' }
+                ]
+            }
+        };
+        this.peer = new Peer(peerConfig);
         this.peer.on('open', (id) => {
             this.conn = this.peer.connect(hostId, { reliable: true });
             this.setupConnection();
