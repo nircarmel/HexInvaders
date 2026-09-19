@@ -48,6 +48,9 @@ export class HexGame {
         this.timeLeft = this.timerDuration;
         this.timerInterval = null;
 
+        this.overlayMode = 'NONE';
+        this.overlayCache = { 'BLUE': null, 'RED': null };
+
         this.logSystem(`Game initialized. ${this.blueName}'s Turn.`);
         this.saveSnapshot();
         // Timers in network games will be started manually upon connection
@@ -245,6 +248,7 @@ export class HexGame {
             }
         }
 
+        this.invalidateOverlayCache();
         this.switchPhase();
         this.saveSnapshot();
         if (this.onStateChange) this.onStateChange();
@@ -454,6 +458,7 @@ export class HexGame {
 
         this.actionUsed = true;
         this.selectedTile = null;
+        this.invalidateOverlayCache();
         this.checkWinConditions();
         if (!this.winner) this.endTurn(isSyncEvent, true);
         return true;
@@ -647,6 +652,7 @@ export class HexGame {
         this.logAction(this.activeTeam, `Constructed a vertical barricade at [${col},${row}].`);
         this.actionUsed = true;
         this.selectedTile = null;
+        this.invalidateOverlayCache();
         this.checkWinConditions();
         if (!this.winner) this.endTurn(isSyncEvent, true);
         return true;
@@ -724,6 +730,59 @@ export class HexGame {
         }
 
         return false;
+    }
+
+    invalidateOverlayCache() {
+        this.overlayCache = { 'BLUE': null, 'RED': null };
+    }
+
+    getOverlayMaps(team) {
+        if (this.overlayCache[team]) return this.overlayCache[team];
+
+        const go = new Set();
+        const observe = new Set();
+        const spot = new Set();
+
+        const myUnits = this.getAllUnits(team);
+
+        // Calculate "Go"
+        for (let u of myUnits) {
+            if (u.unit.speed > 0) {
+                const reach = this.getReachableHexes(u.col, u.row, team, u.unit.speed);
+                for (let k of reach) go.add(k);
+            }
+        }
+
+        // Calculate Observe and Spot
+        for (let c = 0; c < this.cols; c++) {
+            for (let r = 0; r < this.rows; r++) {
+                const k = `${c},${r}`;
+
+                // Validate if it's broadly spotted (unblocked LoS)
+                const isSpotted = this.canSeeUnit(c, r, team);
+                if (isSpotted) {
+                    let observed = false;
+                    for (let u of myUnits) {
+                        let viewRange = this.config.maxSpeed + 1;
+                        if (u.unit.type === 'observation') viewRange = this.config.maxSpeed * 2;
+
+                        if (hexMath.offsetDistance(c, r, u.col, u.row) <= viewRange) {
+                            observed = true;
+                            break;
+                        }
+                    }
+
+                    if (observed && !go.has(k)) {
+                        observe.add(k);
+                    } else if (!observed && !go.has(k)) {
+                        spot.add(k);
+                    }
+                }
+            }
+        }
+
+        this.overlayCache[team] = { go, observe, spot };
+        return this.overlayCache[team];
     }
 
     checkWinConditions() {

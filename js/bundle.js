@@ -213,6 +213,9 @@ class HexGame {
         this.timeLeft = this.timerDuration;
         this.timerInterval = null;
 
+        this.overlayMode = 'NONE';
+        this.overlayCache = { 'BLUE': null, 'RED': null };
+
         this.logSystem(`Game initialized. ${this.blueName}'s Turn.`);
         this.saveSnapshot();
         // Timers in network games will be started manually upon connection
@@ -410,6 +413,7 @@ class HexGame {
             }
         }
 
+        this.invalidateOverlayCache();
         this.switchPhase();
         this.saveSnapshot();
         if (this.onStateChange) this.onStateChange();
@@ -619,6 +623,7 @@ class HexGame {
 
         this.actionUsed = true;
         this.selectedTile = null;
+        this.invalidateOverlayCache();
         this.checkWinConditions();
         if (!this.winner) this.endTurn(isSyncEvent, true);
         return true;
@@ -812,6 +817,7 @@ class HexGame {
         this.logAction(this.activeTeam, `Constructed a vertical barricade at [${col},${row}].`);
         this.actionUsed = true;
         this.selectedTile = null;
+        this.invalidateOverlayCache();
         this.checkWinConditions();
         if (!this.winner) this.endTurn(isSyncEvent, true);
         return true;
@@ -889,6 +895,59 @@ class HexGame {
         }
 
         return false;
+    }
+
+    invalidateOverlayCache() {
+        this.overlayCache = { 'BLUE': null, 'RED': null };
+    }
+
+    getOverlayMaps(team) {
+        if (this.overlayCache[team]) return this.overlayCache[team];
+
+        const go = new Set();
+        const observe = new Set();
+        const spot = new Set();
+
+        const myUnits = this.getAllUnits(team);
+
+        // Calculate "Go"
+        for (let u of myUnits) {
+            if (u.unit.speed > 0) {
+                const reach = this.getReachableHexes(u.col, u.row, team, u.unit.speed);
+                for (let k of reach) go.add(k);
+            }
+        }
+
+        // Calculate Observe and Spot
+        for (let c = 0; c < this.cols; c++) {
+            for (let r = 0; r < this.rows; r++) {
+                const k = `${c},${r}`;
+
+                // Validate if it's broadly spotted (unblocked LoS)
+                const isSpotted = this.canSeeUnit(c, r, team);
+                if (isSpotted) {
+                    let observed = false;
+                    for (let u of myUnits) {
+                        let viewRange = this.config.maxSpeed + 1;
+                        if (u.unit.type === 'observation') viewRange = this.config.maxSpeed * 2;
+
+                        if (hexMath.offsetDistance(c, r, u.col, u.row) <= viewRange) {
+                            observed = true;
+                            break;
+                        }
+                    }
+
+                    if (observed && !go.has(k)) {
+                        observe.add(k);
+                    } else if (!observed && !go.has(k)) {
+                        spot.add(k);
+                    }
+                }
+            }
+        }
+
+        this.overlayCache[team] = { go, observe, spot };
+        return this.overlayCache[team];
     }
 
     checkWinConditions() {
@@ -1404,6 +1463,18 @@ class RenderEngine {
                 if (col === 0) fill = 'rgba(59, 130, 246, 0.45)'; // Brighter Blue zone
                 if (col === this.game.cols - 1) fill = 'rgba(239, 68, 68, 0.45)'; // Brighter Red zone
 
+                // Map Overlay Shading Rules
+                if (this.game.overlayMode && this.game.overlayMode !== 'NONE') {
+                    const omaps = this.game.getOverlayMaps(this.game.overlayMode);
+                    if (omaps.go.has(key)) {
+                        fill = this.game.overlayMode === 'BLUE' ? 'rgba(30, 58, 138, 0.9)' : 'rgba(127, 29, 29, 0.9)';
+                    } else if (omaps.observe.has(key)) {
+                        fill = this.game.overlayMode === 'BLUE' ? 'rgba(30, 64, 175, 0.65)' : 'rgba(153, 27, 27, 0.65)';
+                    } else if (omaps.spot.has(key)) {
+                        fill = this.game.overlayMode === 'BLUE' ? 'rgba(37, 99, 235, 0.4)' : 'rgba(185, 28, 28, 0.4)';
+                    }
+                }
+
                 // Barricade styling
                 if (tile.isBarricade) {
                     fill = '#2a2a2a'; // unmistakably neutral dark gray
@@ -1646,6 +1717,16 @@ class UIManager {
 
         const btnRestart = document.getElementById('btn-restart-game');
         if (btnRestart) btnRestart.onclick = () => { if (window.restartCurrentGame) window.restartCurrentGame(); };
+
+        // Bind Overlay Radio buttons
+        const overlayRadios = document.querySelectorAll('input[name="overlayToggle"]');
+        overlayRadios.forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    this.game.overlayMode = e.target.value;
+                }
+            });
+        });
 
         // Context Menu Elements
         this.contextMenu = document.getElementById('context-menu');

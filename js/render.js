@@ -313,6 +313,18 @@ export class RenderEngine {
                 if (col === 0) fill = 'rgba(59, 130, 246, 0.45)'; // Brighter Blue zone
                 if (col === this.game.cols - 1) fill = 'rgba(239, 68, 68, 0.45)'; // Brighter Red zone
 
+                // Map Overlay Shading Rules
+                if (this.game.overlayMode && this.game.overlayMode !== 'NONE') {
+                    const omaps = this.game.getOverlayMaps(this.game.overlayMode);
+                    if (omaps.go.has(key)) {
+                        fill = this.game.overlayMode === 'BLUE' ? 'rgba(30, 58, 138, 0.9)' : 'rgba(127, 29, 29, 0.9)';
+                    } else if (omaps.observe.has(key)) {
+                        fill = this.game.overlayMode === 'BLUE' ? 'rgba(30, 64, 175, 0.65)' : 'rgba(153, 27, 27, 0.65)';
+                    } else if (omaps.spot.has(key)) {
+                        fill = this.game.overlayMode === 'BLUE' ? 'rgba(37, 99, 235, 0.4)' : 'rgba(185, 28, 28, 0.4)';
+                    }
+                }
+
                 // Barricade styling
                 if (tile.isBarricade) {
                     fill = '#2a2a2a'; // unmistakably neutral dark gray

@@ -118,6 +118,16 @@ export class UIManager {
         const btnRestart = document.getElementById('btn-restart-game');
         if (btnRestart) btnRestart.onclick = () => { if (window.restartCurrentGame) window.restartCurrentGame(); };
 
+        // Bind Overlay Radio buttons
+        const overlayRadios = document.querySelectorAll('input[name="overlayToggle"]');
+        overlayRadios.forEach(radio => {
+            radio.addEventListener('change', (e) => {
+                if (e.target.checked) {
+                    this.game.overlayMode = e.target.value;
+                }
+            });
+        });
+
         // Context Menu Elements
         this.contextMenu = document.getElementById('context-menu');
         this.contextOptions = document.getElementById('context-options');
