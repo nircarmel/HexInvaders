@@ -234,11 +234,9 @@ export class UIManager {
             let cssX = screenX * scaleX;
             let cssY = screenY * scaleY;
 
-            // Anchor logic sequentially requested by user bounding mechanics:
-            // Right-side triggers push menus negatively to align the right-edge perfectly on nodes
-            let targetLeft = cssX > rect.width / 2 ? cssX - actualWidth : cssX;
-            // Vertically center exactly over the node cleanly
-            let targetTop = cssY - (actualHeight / 2);
+            // Dead center projection request strictly applied
+            let targetLeft = (rect.width / 2) - (actualWidth / 2);
+            let targetTop = (rect.height / 2) - (actualHeight / 2);
 
             // Confine bounds securely to prevent clipping inside the container organically
             targetLeft = Math.max(10, Math.min(targetLeft, rect.width - actualWidth - 10));
