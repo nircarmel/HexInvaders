@@ -89,6 +89,14 @@
                     title="Exit to Lobby">✕</button>
             </div>
 
+            <!-- Bottom Left Action Controls -->
+            <div
+                style="position: absolute; bottom: 20px; left: 20px; z-index: 60; display: flex; gap: 10px; pointer-events: auto;">
+                <button id="btn-toggle-log" class="btn-icon"
+                    style="background: rgba(100, 100, 100, 0.4); border: 1px solid rgba(255,255,255,0.3); color: white; font-size: 1.2rem; width: 44px; height: 44px; border-radius: 5px; display: flex; align-items: center; justify-content: center; cursor: pointer;"
+                    title="Toggle Tactical Log">📝</button>
+            </div>
+
             <!-- Top HUD -->
             <header class="hud-header">
                 <div class="team-panel blue-team">
@@ -103,8 +111,8 @@
             </header>
 
             <!-- Floating Action Log -->
-            <div id="floating-log" class="glass-subpanel"
-                style="position: absolute; left: 20px; bottom: 130px; width: 300px; height: 250px; z-index: 50; flex-direction: column; display: flex;">
+            <div id="floating-log" class="glass-subpanel hidden"
+                style="position: absolute; left: 20px; bottom: 80px; width: 300px; height: 250px; z-index: 50; flex-direction: column; display: flex;">
                 <h4>Tactical Log</h4>
                 <div id="action-log" class="log-container" style="flex: 1; overflow-y: auto;"></div>
             </div>
@@ -365,7 +373,7 @@
         </div>
     </div>
 
-    <script src="js/bundle.js?v=1789797140338"></script>
+    <script src="js/bundle.js?v=1789797750595"></script>
 </body>
 
 </html>
