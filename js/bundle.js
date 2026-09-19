@@ -967,7 +967,11 @@ class RenderEngine {
 
     drawUnit(x, y, unit) {
         // Obscure enemy if Hidden Mode
-        const isEnemy = unit.team !== this.game.activeTeam;
+        let perspective = this.game.activeTeam;
+        if (this.game.gameMode === 'ONLINE' || this.game.gameMode === 'AI') {
+            perspective = this.game.localTeam;
+        }
+        const isEnemy = unit.team !== perspective;
         let hideStats = this.game.config.mode === 'HIDDEN' && isEnemy && this.game.winner === null;
 
         if (unit.exposedCounter && unit.exposedCounter > 0) {
@@ -1386,7 +1390,11 @@ class UIManager {
 
         if (tile && tile.unit && !tile.unit.isFlag) {
             // Respect fog of war
-            const isEnemy = tile.unit.team !== this.game.activeTeam;
+            let perspective = this.game.activeTeam;
+            if (this.game.gameMode === 'ONLINE' || this.game.gameMode === 'AI') {
+                perspective = this.game.localTeam;
+            }
+            const isEnemy = tile.unit.team !== perspective;
             let hideStats = this.game.config.mode === 'HIDDEN' && isEnemy && this.game.winner === null;
 
             if (tile.unit.exposedCounter && tile.unit.exposedCounter > 0) {
