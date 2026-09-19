@@ -62,7 +62,7 @@ body {
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid rgba(255, 255, 255, 0.05);
     border-radius: 8px;
-    padding: 1rem;
+    padding: 0.6rem;
 }
 
 /* Modals */
@@ -355,8 +355,8 @@ button:disabled {
 .context-pop {
     position: absolute;
     width: auto;
-    min-width: 250px;
-    max-width: 380px;
+    min-width: 200px;
+    max-width: 280px;
     z-index: 100;
     padding: 1rem;
     pointer-events: auto;
@@ -368,7 +368,7 @@ button:disabled {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 1rem;
+    margin-bottom: 0.5rem;
     padding-bottom: 0.5rem;
     border-bottom: 1px solid var(--glass-border);
 }
@@ -380,8 +380,8 @@ button:disabled {
 }
 
 #context-deploy-panel {
-    margin-top: 1rem;
-    padding-top: 1rem;
+    margin-top: 0.5rem;
+    padding-top: 0.5rem;
     border-top: 1px solid var(--glass-border);
 }
 
@@ -416,14 +416,14 @@ button:disabled {
 
 /* Deploy Panel elements */
 .form-group {
-    margin-bottom: 1rem;
+    margin-bottom: 0.5rem;
 }
 
 .sliders-container {
     display: flex;
     flex-direction: column;
     gap: 0.75rem;
-    margin-bottom: 1rem;
+    margin-bottom: 0.5rem;
 }
 
 .slider-group label {
