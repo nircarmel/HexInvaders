@@ -215,6 +215,37 @@ export class UIManager {
         if (this.unitTooltip) this.unitTooltip.classList.add('hidden');
     }
 
+    updatePopupTracking() {
+        if (!this.contextMenu.classList.contains('hidden') && this._contextTarget) {
+            const pt = hexMath.offsetToPixel(this._contextTarget.col, this._contextTarget.row, this.render.hexRadius);
+
+            // Apply camera offsets
+            const screenX = pt.x * this.render.camera.zoom + this.render.camera.x;
+            const screenY = pt.y * this.render.camera.zoom + this.render.camera.y;
+
+            const rect = this.canvas.getBoundingClientRect();
+            // Estimate max height/width dependent on deploy visibility
+            const isDeploy = !this.contextDeployPanel.classList.contains('hidden');
+            const estMaxWidth = isDeploy ? 350 : 270;
+            const estMaxHeight = isDeploy ? 450 : 250;
+
+            const scaleX = rect.width / this.canvas.width;
+            const scaleY = rect.height / this.canvas.height;
+
+            let cssX = screenX * scaleX;
+            let cssY = screenY * scaleY;
+
+            let safeX = cssX > rect.width / 2 ? cssX - estMaxWidth - 10 : cssX + 10;
+            let safeY = cssY > rect.height / 2 ? cssY - estMaxHeight - 10 : cssY + 10;
+
+            if (safeX < 10) safeX = 10;
+            if (safeY < 10) safeY = 10;
+
+            this.contextMenu.style.left = `${safeX}px`;
+            this.contextMenu.style.top = `${safeY}px`;
+        }
+    }
+
     playTickSound() {
         if (!this.audioCtx) {
             this.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -467,23 +498,9 @@ export class UIManager {
                 this._contextTarget = { col, row };
 
                 this.contextMenu.classList.remove('hidden');
-
-                const rect = this.canvas.getBoundingClientRect();
-                let localX = e.clientX - rect.left;
-                let localY = e.clientY - rect.top;
-                let estMaxWidth = 350;
-                let estMaxHeight = 450;
-
-                let safeX = localX > rect.width / 2 ? localX - estMaxWidth - 10 : localX + 10;
-                let safeY = localY > rect.height / 2 ? localY - estMaxHeight - 10 : localY + 10;
-
-                if (safeX < 10) safeX = 10;
-                if (safeY < 10) safeY = 10;
-
-                this.contextMenu.style.left = `${safeX}px`;
-                this.contextMenu.style.top = `${safeY}px`;
-
                 this.contextDeployPanel.classList.remove('hidden');
+
+                this.updatePopupTracking();
 
                 this.buildDeployMatrix(false, this.game.config.maxStrength, this.game.config.maxSpeed, col, row, e);
             }
@@ -633,23 +650,10 @@ export class UIManager {
                 this.closeContextMenu();
                 this._contextTarget = { col, row };
                 this.contextMenu.classList.remove('hidden');
-
-                const rect = this.canvas.getBoundingClientRect();
-                let localX = e.clientX - rect.left;
-                let localY = e.clientY - rect.top;
-                let estMaxWidth = 350;
-                let estMaxHeight = 450;
-
-                let safeX = localX > rect.width / 2 ? localX - estMaxWidth - 10 : localX + 10;
-                let safeY = localY > rect.height / 2 ? localY - estMaxHeight - 10 : localY + 10;
-
-                if (safeX < 10) safeX = 10;
-                if (safeY < 10) safeY = 10;
-
-                this.contextMenu.style.left = `${safeX}px`;
-                this.contextMenu.style.top = `${safeY}px`;
-
                 this.contextDeployPanel.classList.remove('hidden');
+
+                this.updatePopupTracking();
+
                 this.buildDeployMatrix(true, 0, this.game.config.maxSpeed, col, row, e);
             }
         }

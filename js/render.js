@@ -376,6 +376,10 @@ export class RenderEngine {
 
         this.ctx.restore();
 
+        if (this.game.ui && typeof this.game.ui.updatePopupTracking === 'function') {
+            this.game.ui.updatePopupTracking();
+        }
+
         requestAnimationFrame(() => this.drawLoop());
     }
 }
