@@ -11,6 +11,17 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="css/style.css">
     <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script>
+        window.onerror = function (msg, url, line, col, error) {
+            const h = document.querySelector('h1');
+            if (h) {
+                h.innerText = `ERR: ${msg} (L${line})`;
+                h.style.color = "red";
+                h.style.fontSize = "0.8rem";
+            }
+            return false;
+        };
+    </script>
 </head>
 
 <body>
@@ -83,7 +94,7 @@
                     style="display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 1200px; padding: 0 40px; box-sizing: border-box; height: 100%;">
                     <div
                         style="font-family: 'Press Start 2P', cursive; font-size: 1.2rem; color: #fbbf24; text-shadow: 2px 2px 0px #000; display: flex; align-items: center; height: 100%;">
-                        HEX INVADERS (v4 CENTER)
+                        HEX INVADERS (v5 DEBUG)
                     </div>
                     <div
                         style="display: flex; gap: 30px; font-size: 0.8rem; color: #ccc; font-family: 'Inter', sans-serif; text-transform: uppercase; align-items: center; height: 100%;">
@@ -437,7 +448,7 @@
     </div>
     </div>
 
-    <script src="js/bundle.js?v=1789829205535"></script>
+    <script src="js/bundle.js?v=1789829845707"></script>
 </body>
 
 </html>
