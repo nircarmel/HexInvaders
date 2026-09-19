@@ -102,11 +102,8 @@ document.addEventListener('DOMContentLoaded', () => {
                             document.getElementById('online-modal').classList.add('hidden');
                             uiLayer.classList.remove('hidden');
                             remoteConfig.redName = myName;
+                            // Engine internally maps NetworkManager when GLOBAL_NETWORK is provided
                             launchGame(remoteConfig);
-                            if (GLOBAL_NETWORK) {
-                                GLOBAL_NETWORK.bindEngines(GLOBAL_GAME, GLOBAL_UI);
-                                if (GLOBAL_NETWORK.ui) GLOBAL_NETWORK.ui.updateHUD();
-                            }
                         };
                     };
                     lobbyList.appendChild(div);

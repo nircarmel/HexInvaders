@@ -91,21 +91,23 @@ class NetworkManager {
     }
 
     setupConnection() {
-        this.conn.on('open', () => {
+        const handleOpen = () => {
             this.connected = true;
             if (this.isHost && this.game) {
-                // Host sends config to guest immediately upon connection
+                // Host sends config to guest
                 this.sendData({
                     type: 'CONFIG',
                     config: this.game.config
                 });
 
                 // Remove game from open lobbies
-                fetch('/api/lobby', {
-                    method: 'DELETE',
-                    body: JSON.stringify({ hostId: this.peer.id }),
-                    headers: { 'Content-Type': 'application/json' }
-                }).catch(console.error);
+                if (this.peer && this.peer.id) {
+                    fetch('/api/lobby', {
+                        method: 'DELETE',
+                        body: JSON.stringify({ hostId: this.peer.id }),
+                        headers: { 'Content-Type': 'application/json' }
+                    }).catch(console.error);
+                }
             } else {
                 this.sendData({
                     type: 'GUEST_JOIN',
@@ -113,7 +115,13 @@ class NetworkManager {
                 });
             }
             if (this.ui) this.ui.updateHUD();
-        });
+        };
+
+        if (this.conn.open) {
+            handleOpen();
+        } else {
+            this.conn.on('open', handleOpen);
+        }
 
         this.conn.on('data', (data) => {
             this.receiveData(data);

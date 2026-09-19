@@ -19,9 +19,15 @@
             <div class="modal-card glass-panel pop-in" style="width: 400px; text-align: center;">
                 <h1 style="color: #60a5fa; margin-bottom: 30px; font-size: 2.5rem;">Hex-Invaders</h1>
                 <div style="display: flex; flex-direction: column; gap: 15px;">
-                    <input type="text" id="player-name" placeholder="Enter Your Name..." class="modern-input"
-                        style="color: white; font-size: 1.1rem; padding: 12px; text-align: center; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.5); border-radius: 4px; font-weight: bold; margin-bottom: 15px;"
-                        maxlength="15" value="Player">
+                    <div
+                        style="background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 15px; margin-bottom: 25px;">
+                        <label for="player-name"
+                            style="display: block; color: #fbbf24; font-size: 0.9rem; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px;">Select
+                            Your Player Name</label>
+                        <input type="text" id="player-name" placeholder="Type your name here..." class="modern-input"
+                            style="width: 100%; color: white; font-size: 1.2rem; padding: 12px; text-align: center; border: 2px solid rgba(96,165,250,0.5); background: rgba(0,0,0,0.7); border-radius: 4px; font-weight: bold; transition: all 0.2s;"
+                            maxlength="15" value="">
+                    </div>
 
                     <button id="btn-mode-local" class="btn-primary large">Local 1v1</button>
                     <button id="btn-mode-ai" class="btn-primary large">Player vs Computer</button>
@@ -341,7 +347,7 @@
         </div>
     </div>
 
-    <script src="js/bundle.js?v=1789788776389"></script>
+    <script src="js/bundle.js?v=1789789112683"></script>
 </body>
 
 </html>
