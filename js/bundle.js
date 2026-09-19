@@ -952,8 +952,14 @@ class RenderEngine {
     }
 
     resize() {
-        this.canvas.width = window.innerWidth;
-        this.canvas.height = window.innerHeight;
+        const boardFrame = document.getElementById('board-frame');
+        if (boardFrame) {
+            this.canvas.width = boardFrame.clientWidth;
+            this.canvas.height = boardFrame.clientHeight;
+        } else {
+            this.canvas.width = window.innerWidth;
+            this.canvas.height = window.innerHeight;
+        }
         this.centerCamera();
     }
 
@@ -988,8 +994,8 @@ class RenderEngine {
         const reqWidth = this.game.cols * 1.5 + 0.5;
         const reqHeight = (this.game.rows + 0.5) * Math.sqrt(3);
 
-        const marginWidth = window.innerWidth > 900 ? 500 : 100;
-        const marginHeight = 80;
+        const marginWidth = 20;
+        const marginHeight = 30;
         const maxRx = (this.canvas.width - marginWidth) / reqWidth;
         const maxRy = (this.canvas.height - marginHeight) / reqHeight;
 
@@ -1006,14 +1012,10 @@ class RenderEngine {
         this.camera.y = (this.canvas.height - boardPixelHeight) / 2 + (Math.sqrt(3) / 2 * r);
         this.camera.zoom = 1;
 
-        const topOfGridY = (this.canvas.height - boardPixelHeight) / 2;
-        const hudHeader = document.querySelector('.hud-header');
-        if (hudHeader) {
-            hudHeader.style.marginTop = `${Math.max(10, topOfGridY)}px`;
-        }
-
+        // Do not alter Top HUD here; CSS layout handles it natively now
         const topPanelInner = document.getElementById('top-info-panel-inner');
         if (topPanelInner) {
+            // Keep strictly matching canvas visual width!
             topPanelInner.style.width = `${Math.floor(boardPixelWidth)}px`;
         }
     }
@@ -1606,8 +1608,9 @@ class UIManager {
             bluePanel.classList.add('active-turn');
             redPanel.classList.remove('active-turn');
 
-            turnSidebar.style.right = 'auto';
-            turnSidebar.style.left = '20px';
+            const leftBox = document.getElementById('left-turn-container');
+            if (leftBox) leftBox.appendChild(turnSidebar);
+
             bigText.style.color = '#3b82f6';
             if (this.game.localTeam === 'BLUE') {
                 bigText.innerHTML = 'Your<br>Turn';
@@ -1619,8 +1622,9 @@ class UIManager {
             bluePanel.classList.remove('active-turn');
             redPanel.classList.add('active-turn');
 
-            turnSidebar.style.left = 'auto';
-            turnSidebar.style.right = '20px';
+            const rightBox = document.getElementById('right-turn-container');
+            if (rightBox) rightBox.appendChild(turnSidebar);
+
             bigText.style.color = '#ef4444';
             if (this.game.localTeam === 'RED') {
                 bigText.innerHTML = 'Your<br>Turn';

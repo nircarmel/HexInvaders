@@ -72,202 +72,154 @@
             </div>
         </div>
 
-        <!-- Canvas for WebGL / 2D rendering -->
-        <canvas id="gameCanvas"></canvas>
-
-        <!-- UI Layer overlaid on Canvas -->
-        <div id="ui-layer" class="hidden">
+        <!-- Master UI Layer overlaid spanning DOM Canvas -->
+        <div id="ui-layer" class="hidden" style="display: flex; flex-direction: column; height: 100vh; width: 100%; overflow: hidden; background: #090a0f;">
 
             <!-- Top Information Panel -->
-            <div id="top-info-panel"
-                style="position: absolute; top: 0; left: 0; width: 100%; height: 50px; pointer-events: none; display: flex; justify-content: center; align-items: center; box-sizing: border-box; z-index: 60; background: #090a0f;">
-
-                <div id="top-info-panel-inner"
-                    style="display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 1200px;">
-                    <div
-                        style="font-family: 'Press Start 2P', cursive; font-size: 1.2rem; color: #fbbf24; text-shadow: 2px 2px 0px #000; display: flex; align-items: center; height: 100%;">
+            <div id="top-frame" style="height: 50px; flex-shrink: 0; background: #090a0f; display: flex; justify-content: center; align-items: center; border-bottom: 2px solid rgba(255,255,255,0.05); z-index: 60;">
+                <div id="top-info-panel-inner" style="display: flex; justify-content: space-between; align-items: center; width: 100%; max-width: 1200px; padding: 0 40px; box-sizing: border-box; height: 100%;">
+                    <div style="font-family: 'Press Start 2P', cursive; font-size: 1.2rem; color: #fbbf24; text-shadow: 2px 2px 0px #000; display: flex; align-items: center; height: 100%;">
                         HEX INVADERS
                     </div>
-                    <div
-                        style="display: flex; gap: 30px; font-size: 0.8rem; color: #ccc; font-family: 'Inter', sans-serif; text-transform: uppercase; align-items: center; height: 100%;">
-                        <div
-                            style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
-                            <span
-                                style="font-size: 0.55rem; color: #6b7280; font-weight: bold; margin-bottom: 2px;">Game
-                                Type</span>
+                    <div style="display: flex; gap: 30px; font-size: 0.8rem; color: #ccc; font-family: 'Inter', sans-serif; text-transform: uppercase; align-items: center; height: 100%;">
+                        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                            <span style="font-size: 0.55rem; color: #6b7280; font-weight: bold; margin-bottom: 2px;">Game Type</span>
                             <span id="info-mode" style="color: #fff; font-weight: 600;">Invade</span>
                         </div>
-                        <div
-                            style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
-                            <span
-                                style="font-size: 0.55rem; color: #6b7280; font-weight: bold; margin-bottom: 2px;">Visibility</span>
+                        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                            <span style="font-size: 0.55rem; color: #6b7280; font-weight: bold; margin-bottom: 2px;">Visibility</span>
                             <span id="info-vis" style="color: #fff; font-weight: 600;">Nearby Units</span>
                         </div>
-                        <div
-                            style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
-                            <span
-                                style="font-size: 0.55rem; color: #6b7280; font-weight: bold; margin-bottom: 2px;">Unit
-                                Power</span>
+                        <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                            <span style="font-size: 0.55rem; color: #6b7280; font-weight: bold; margin-bottom: 2px;">Unit Power</span>
                             <span id="info-power" style="color: #fff; font-weight: 600;">Depleting</span>
                         </div>
                     </div>
                 </div>
             </div>
 
-            <!-- Bottom Right Action Controls -->
-            <div
-                style="position: absolute; bottom: 20px; right: 20px; z-index: 60; display: flex; gap: 10px; pointer-events: auto;">
-                <button id="btn-restart-game" class="btn-icon"
-                    style="background: rgba(150, 0, 0, 0.4); border: 1px solid rgba(255,255,255,0.3); color: white; font-weight: bold; font-size: 1.5rem; width: 44px; height: 44px; border-radius: 5px; display: flex; align-items: center; justify-content: center; cursor: pointer;"
-                    title="Restart Game">↻</button>
-                <button id="btn-exit-game" class="btn-icon"
-                    style="background: rgba(150, 0, 0, 0.4); border: 1px solid rgba(255,255,255,0.3); color: white; font-weight: bold; font-size: 1.2rem; width: 44px; height: 44px; border-radius: 5px; display: flex; align-items: center; justify-content: center; cursor: pointer;"
-                    title="Exit to Lobby">✕</button>
-            </div>
-
-            <!-- Bottom Left Action Controls -->
-            <div
-                style="position: absolute; bottom: 20px; left: 20px; z-index: 60; display: flex; gap: 10px; pointer-events: auto;">
-                <button id="btn-toggle-log" class="btn-icon"
-                    style="background: rgba(100, 100, 100, 0.4); border: 1px solid rgba(255,255,255,0.3); color: white; font-size: 1.2rem; width: 44px; height: 44px; border-radius: 5px; display: flex; align-items: center; justify-content: center; cursor: pointer;"
-                    title="Toggle Tactical Log">📝</button>
-            </div>
-
-            <!-- Top HUD -->
-            <header class="hud-header" style="top: 70px;">
-                <div class="team-panel blue-team">
-                    <h2 class="team-title" style="font-size: 1rem; text-align: center; margin: 0;">Blue Credit: <span
-                            id="blue-credits">0</span></h2>
+            <!-- Middle Flex Container -->
+            <div id="middle-frame" style="flex: 1; display: flex; overflow: hidden; position: relative;">
+                
+                <!-- Left Frame (Blue Team) -->
+                <div id="left-frame" style="width: 250px; flex-shrink: 0; background: rgba(0,0,0,0.6); display: flex; flex-direction: column; align-items: center; padding: 20px 0; border-right: 1px solid rgba(255,255,255,0.1); z-index: 50;">
+                    <div class="team-panel blue-team" style="margin-bottom: 30px; width: 90%; display: flex; flex-direction: column; justify-content: center; align-items: center; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 8px; padding: 15px 0;">
+                        <h2 class="team-title" style="font-size: 1.1rem; text-align: center; margin: 0; color: #60a5fa;">Blue Player</h2>
+                        <h2 style="font-size: 0.9rem; margin: 5px 0 0 0; color: #fff;">Credit: <span id="blue-credits">0</span></h2>
+                    </div>
+                    <!-- Empty container for dynamic insertion of matching Turn interface -->
+                    <div id="left-turn-container" style="flex: 1; display: flex; align-items: center; justify-content: center; width: 100%;"></div>
                 </div>
 
-                <div class="team-panel red-team">
-                    <h2 class="team-title" style="font-size: 1rem; text-align: center; margin: 0;">Red Credit: <span
-                            id="red-credits">0</span></h2>
-                </div>
-            </header>
+                <!-- Board Frame containing Canvas and Overlays -->
+                <div id="board-frame" style="flex: 1; position: relative; overflow: hidden;">
+                    <canvas id="gameCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></canvas>
+                    
+                    <!-- Board Native Overlays -->
+                    <div id="floating-log" class="glass-subpanel hidden" style="position: absolute; left: 20px; bottom: 20px; width: 300px; height: 250px; z-index: 50; flex-direction: column; display: flex;">
+                        <h4>Tactical Log</h4>
+                        <div id="action-log" class="log-container" style="flex: 1; overflow-y: auto;"></div>
+                    </div>
 
-            <!-- Floating Action Log -->
-            <div id="floating-log" class="glass-subpanel hidden"
-                style="position: absolute; left: 20px; bottom: 80px; width: 300px; height: 250px; z-index: 50; flex-direction: column; display: flex;">
-                <h4>Tactical Log</h4>
-                <div id="action-log" class="log-container" style="flex: 1; overflow-y: auto;"></div>
+                    <div id="unit-tooltip" class="glass-panel hidden" style="position: absolute; pointer-events: none; z-index: 100; transform: translate(-50%, -100%); padding: 5px 12px; font-size: 0.85rem; display: flex; flex-direction: column; align-items: flex-start; white-space: nowrap;">
+                        <div style="color: #fff; margin-bottom: 2px;"><strong>Power:</strong> <span id="tt-str">0</span></div>
+                        <div style="color: #ccc;"><strong>Speed:</strong> <span id="tt-spd">0</span></div>
+                    </div>
+
+                    <!-- Interactive Help Panel floating -->
+                    <div id="help-panel" class="glass-panel hidden" style="position: absolute; bottom: 20px; left: 20px; z-index: 60; width: 340px; padding: 15px; font-size: 0.85rem; line-height: 1.4; color: #eee; pointer-events: none;">
+                        <h3 style="margin-top:0; color:#60a5fa; margin-bottom: 5px;">Goal:</h3>
+                        <p id="help-goal-text" style="margin: 0 0 10px 0;">The goal of the game, based on the game type we are playing</p>
+                        <h3 style="color:#fcd34d; margin-bottom: 5px;">Summon a unit:</h3>
+                        <p style="margin: 0 0 10px 0;">Click on your player zone.</p>
+                        <h3 style="color:#34d399; margin-bottom: 5px;">Move a unit:</h3>
+                        <p style="margin: 0 0 10px 0;">Left click on a unit tile and then click on the destination tile.</p>
+                        <h3 style="color:#f87171; margin-bottom: 5px;">Create a barricade:</h3>
+                        <p style="margin: 0;">Right-click on a unit to convert it into a barricade, and scroll up/down to position it.<br><span style="color:#aaa;">Note: barricade size derives from the unit's power.</span></p>
+                    </div>
+
+                    <!-- Contextual Popup Menu -->
+                    <div id="context-menu" class="hidden glass-panel context-pop">
+                        <div id="context-header">
+                            <h4>Deploy Unit</h4>
+                            <button id="btn-close-context" class="btn-icon">x</button>
+                        </div>
+                        <div id="context-options" class="action-buttons"></div>
+                        <div id="context-deploy-panel" class="hidden">
+                            <p style="text-align: center; color: #e5e7eb; font-size: 0.95rem; font-weight: bold; margin: -5px 0 10px 0;">Select Speed & Power</p>
+                            <div id="stat-matrix-container" style="display: flex; flex-direction: column; gap: 5px; padding: 15px; border-radius: 8px; background: rgba(0,0,0,0.25);">
+                                <div style="font-size: 0.9rem; text-align: center; margin-bottom: 8px;">
+                                    <span id="preview-cost" style="color: #60a5fa; font-weight: bold;">Cost: -</span>
+                                </div>
+                                <div style="display: flex; align-items: center; justify-content: center;">
+                                    <div style="margin-right: 10px;">
+                                        <div style="writing-mode: vertical-rl; transform: rotate(180deg); font-size: 0.75rem; color: #888; text-align: center;">
+                                            POWER <span id="axis-power-val" style="color:#10b981; font-weight:bold; font-size: 0.85rem; margin-top: 4px;">-</span>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <div id="stat-matrix"></div>
+                                        <div style="font-size: 0.75rem; color: #888; text-align: center; margin-top: 10px;">
+                                            SPEED <span id="axis-speed-val" style="color:#10b981; font-weight:bold; font-size: 0.85rem; margin-left: 4px;">-</span>
+                                        </div>
+                                    </div>
+                                    <div style="margin-left: 10px; visibility: hidden;">
+                                        <div style="writing-mode: vertical-rl; transform: rotate(180deg); font-size: 0.75rem;">POWER <span style="font-weight:bold; font-size: 0.85rem; margin-top: 4px;">-</span></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Frame (Red Team) -->
+                <div id="right-frame" style="width: 250px; flex-shrink: 0; background: rgba(0,0,0,0.6); display: flex; flex-direction: column; align-items: center; padding: 20px 0; border-left: 1px solid rgba(255,255,255,0.1); z-index: 50;">
+                    <div class="team-panel red-team" style="margin-bottom: 30px; width: 90%; display: flex; flex-direction: column; justify-content: center; align-items: center; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 8px; padding: 15px 0;">
+                        <h2 class="team-title" style="font-size: 1.1rem; text-align: center; margin: 0; color: #f87171;">Red Player</h2>
+                        <h2 style="font-size: 0.9rem; margin: 5px 0 0 0; color: #fff;">Credit: <span id="red-credits">0</span></h2>
+                    </div>
+                    <!-- Empty container for dynamic insertion of matching Turn interface -->
+                    <div id="right-turn-container" style="flex: 1; display: flex; align-items: center; justify-content: center; width: 100%;"></div>
+                </div>
             </div>
 
+            <!-- Bottom Frame -->
+            <div id="bottom-frame" style="height: 60px; flex-shrink: 0; background: #000; display: flex; justify-content: space-between; align-items: center; padding: 0 40px; border-top: 2px solid rgba(255,255,255,0.05); z-index: 60;">
+                
+                <!-- Bottom Left Action Controls -->
+                <div style="display: flex; gap: 15px; align-items: center;">
+                    <button id="btn-toggle-log" class="btn-icon" style="background: rgba(100, 100, 100, 0.4); border: 1px solid rgba(255,255,255,0.3); color: white; font-size: 1.2rem; width: 44px; height: 44px; border-radius: 5px; display: flex; align-items: center; justify-content: center; cursor: pointer;" title="Toggle Tactical Log">📝</button>
+                    <button id="btn-help" class="btn-icon" style="background: rgba(255,255,255,0.2); border-radius: 5%; width: 44px; height: 44px; font-weight: bold; font-size: 1.2rem; cursor: help; border: 1px solid rgba(255,255,255,0.4); display: flex; align-items: center; justify-content: center;" title="Help">?</button>
+                    <div style="position: relative; display: flex; align-items: center; gap: 10px;">
+                        <button id="btn-clock" class="btn-icon" style="background: rgba(100,100,100,0.85); border: 1px solid rgba(255,255,255,0.3); border-radius: 5%; font-size: 1.5rem; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center;" title="Time Machine">⏳</button>
+                        <div id="history-controls" style="display: none; justify-content: center; background: rgba(50,50,50,0.9); padding: 5px 10px; border-radius: 10px; gap: 8px; flex-direction: row; border: 1px solid rgba(255,255,255,0.2);">
+                             <button id="btn-hist-prev" class="btn-icon" style="padding: 6px 12px; font-size: 1.0rem; background: rgba(255,255,255,0.15); border-radius: 5px;">&lt; Prev</button>
+                             <button id="btn-hist-live" class="btn-icon" style="padding: 6px 12px; font-size: 1.0rem; background: rgba(255,255,255,0.15); border-radius: 5px;">Live</button>
+                             <button id="btn-hist-next" class="btn-icon" style="padding: 6px 12px; font-size: 1.0rem; background: rgba(255,255,255,0.15); border-radius: 5px;">Next &gt;</button>
+                        </div>
+                    </div>
+                </div>
 
+                <!-- Bottom Right Action Controls -->
+                <div style="display: flex; gap: 15px; align-items: center;">
+                    <button id="btn-restart-game" class="btn-icon" style="background: rgba(150, 0, 0, 0.4); border: 1px solid rgba(255,255,255,0.3); color: white; font-weight: bold; font-size: 1.5rem; width: 44px; height: 44px; border-radius: 5px; display: flex; align-items: center; justify-content: center; cursor: pointer;" title="Restart Game">↻</button>
+                    <button id="btn-exit-game" class="btn-icon" style="background: rgba(150, 0, 0, 0.4); border: 1px solid rgba(255,255,255,0.3); color: white; font-weight: bold; font-size: 1.2rem; width: 44px; height: 44px; border-radius: 5px; display: flex; align-items: center; justify-content: center; cursor: pointer;" title="Exit to Lobby">✕</button>
+                </div>
+            </div>
 
-            <div id="turn-action-sidebar"
-                style="position: absolute; top: 33vh; right: 20px; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; gap: 20px; z-index: 50; pointer-events: auto; width: 220px;">
-                <h1 id="big-turn-text"
-                    style="font-size: 3.5rem; font-weight: 900; text-transform: uppercase; text-shadow: 0 0 15px currentColor; margin: 0; color: #ef4444; text-align: center; line-height: 1.1;">
-                    Your<br>Turn</h1>
+            <!-- The Turn Action Sidebar, hidden by default -->
+            <div id="turn-action-sidebar" class="hidden" style="display: flex; flex-direction: column; align-items: center; gap: 20px; width: 220px;">
+                <h1 id="big-turn-text" style="font-size: 3.5rem; font-weight: 900; text-transform: uppercase; text-shadow: 0 0 15px currentColor; margin: 0; color: #ef4444; text-align: center; line-height: 1.1;">Your<br>Turn</h1>
                 <div style="display: flex; align-items: center; gap: 8px;">
-                    <button id="btn-mute-timer" class="btn-icon"
-                        style="flex-shrink: 0; width: 34px; height: 34px; border-radius: 6px; background: rgba(255,255,255,0.1); display: none; align-items: center; justify-content: center; font-size: 1.1rem; padding: 0; margin-top: -10px;"
-                        title="Mute Timer Sound">🔊</button>
-                    <div id="turn-timer" class="hidden"
-                        style="font-size: 2rem; font-weight: bold; color: white; background: rgba(0,0,0,0.5); padding: 5px 20px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); margin-top: -10px; font-variant-numeric: tabular-nums;">
+                    <button id="btn-mute-timer" class="btn-icon" style="flex-shrink: 0; width: 34px; height: 34px; border-radius: 6px; background: rgba(255,255,255,0.1); display: none; align-items: center; justify-content: center; font-size: 1.1rem; padding: 0; margin-top: -10px;" title="Mute Timer Sound">🔊</button>
+                    <div id="turn-timer" class="hidden" style="font-size: 2rem; font-weight: bold; color: white; background: rgba(0,0,0,0.5); padding: 5px 20px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); margin-top: -10px; font-variant-numeric: tabular-nums;">
                         30s
                     </div>
                 </div>
                 <button id="btn-end-turn" class="btn-primary btn-red" style="width: 200px;">Skip Action</button>
             </div>
-
-            <!-- Hover Tooltip -->
-            <div id="unit-tooltip" class="glass-panel hidden"
-                style="position: absolute; pointer-events: none; z-index: 100; transform: translate(-50%, -100%); padding: 5px 12px; font-size: 0.85rem; display: flex; flex-direction: column; align-items: flex-start; white-space: nowrap;">
-                <div style="color: #fff; margin-bottom: 2px;"><strong>Power:</strong> <span id="tt-str">0</span></div>
-                <div style="color: #ccc;"><strong>Speed:</strong> <span id="tt-spd">0</span></div>
-            </div>
-
-            <!-- Contextual Popup Menu -->
-            <div id="context-menu" class="hidden glass-panel context-pop">
-                <div id="context-header">
-                    <h4>Deploy Unit</h4>
-                    <button id="btn-close-context" class="btn-icon">x</button>
-                </div>
-
-                <div id="context-options" class="action-buttons">
-                    <!-- Buttons injected via JS based on tile -->
-                </div>
-
-                <div id="context-deploy-panel" class="hidden">
-                    <p
-                        style="text-align: center; color: #e5e7eb; font-size: 0.95rem; font-weight: bold; margin: -5px 0 10px 0;">
-                        Select Speed & Power</p>
-                    <div id="stat-matrix-container"
-                        style="display: flex; flex-direction: column; gap: 5px; padding: 15px; border-radius: 8px; background: rgba(0,0,0,0.25);">
-                        <div style="font-size: 0.9rem; text-align: center; margin-bottom: 8px;">
-                            <span id="preview-cost" style="color: #60a5fa; font-weight: bold;">Cost: -</span>
-                        </div>
-                        <div style="display: flex; align-items: center; justify-content: center;">
-                            <div style="margin-right: 10px;">
-                                <div
-                                    style="writing-mode: vertical-rl; transform: rotate(180deg); font-size: 0.75rem; color: #888; text-align: center;">
-                                    POWER <span id="axis-power-val"
-                                        style="color:#10b981; font-weight:bold; font-size: 0.85rem; margin-top: 4px;">-</span>
-                                </div>
-                            </div>
-                            <div>
-                                <div id="stat-matrix"></div>
-                                <div style="font-size: 0.75rem; color: #888; text-align: center; margin-top: 10px;">
-                                    SPEED <span id="axis-speed-val"
-                                        style="color:#10b981; font-weight:bold; font-size: 0.85rem; margin-left: 4px;">-</span>
-                                </div>
-                            </div>
-                            <div style="margin-left: 10px; visibility: hidden;">
-                                <div style="writing-mode: vertical-rl; transform: rotate(180deg); font-size: 0.75rem;">
-                                    POWER <span style="font-weight:bold; font-size: 0.85rem; margin-top: 4px;">-</span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Interactive Help Panel -->
-            <div id="help-button-container"
-                style="position: absolute; bottom: 20px; left: 20px; z-index: 60; display: flex; gap: 10px; align-items: center;">
-                <button id="btn-help" class="btn-icon"
-                    style="background: rgba(255,255,255,0.2); border-radius: 50%; width: 40px; height: 40px; font-weight: bold; font-size: 1.2rem; cursor: help; border: 1px solid rgba(255,255,255,0.4); pointer-events: auto; display: flex; align-items: center; justify-content: center;"
-                    title="Help">?</button>
-                <div style="display: flex; gap: 10px; align-items: center;">
-
-                    <div style="position: relative;">
-                        <button id="btn-clock" class="btn-icon"
-                            style="background: rgba(100,100,100,0.85); border-radius: 50%; font-size: 1.5rem; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; pointer-events: auto;"
-                            title="Time Machine">⏳</button>
-                    </div>
-                </div>
-            </div>
-
-            <!-- Time Machine Controls -->
-            <div id="history-controls"
-                style="display: none; position: absolute; bottom: 75px; left: 20px; width: 220px; justify-content: center; background: rgba(50,50,50,0.9); padding: 8px 12px; border-radius: 20px; gap: 8px; flex-direction: row; pointer-events: auto; z-index: 200; box-sizing: border-box;">
-                <button id="btn-hist-prev" class="btn-icon"
-                    style="padding: 4px 12px; font-size: 1.1rem; background: rgba(255,255,255,0.15);">&lt; Prev</button>
-                <button id="btn-hist-live" class="btn-icon"
-                    style="padding: 4px 12px; font-size: 1.1rem; background: rgba(255,255,255,0.15);">Live</button>
-                <button id="btn-hist-next" class="btn-icon"
-                    style="padding: 4px 12px; font-size: 1.1rem; background: rgba(255,255,255,0.15);">Next &gt;</button>
-            </div>
-
-            <div id="help-panel" class="glass-panel hidden"
-                style="position: absolute; bottom: 70px; left: 20px; z-index: 60; width: 340px; padding: 15px; font-size: 0.85rem; line-height: 1.4; color: #eee; pointer-events: none;">
-                <h3 style="margin-top:0; color:#60a5fa; margin-bottom: 5px;">Goal:</h3>
-                <p id="help-goal-text" style="margin: 0 0 10px 0;">The goal of the game, based on the game type we are
-                    playing.</p>
-                <h3 style="color:#60a5fa; margin-bottom: 5px;">Actions:</h3>
-                <p style="margin: 0 0 10px 0;">Deploy a new unit by clicking on an empty tile on home base:<br>
-                    &bull; <b>Left-Click</b>: deploy a COMBAT unit<br>
-                    &bull; <b>Right-Click</b>: deploy a FLAG unit <span style="color:#aaa;">(available only in "Plant
-                        the flag" game mode)</span></p>
-                <h3 style="color:#34d399; margin-bottom: 5px;">Move a unit:</h3>
-                <p style="margin: 0 0 10px 0;">Left click on a unit tile and then click on the destination tile.</p>
-                <h3 style="color:#f87171; margin-bottom: 5px;">Create a barricade:</h3>
-                <p style="margin: 0;">Right-click on a unit to convert it into a barricade, and scroll up/down to
-                    position it.<br><span style="color:#aaa;">Note: barricade size derives from the unit's power.</span>
-                </p>
-            </div>
+            
+        </div>
 
             <!-- Victory Modal -->
             <div id="victory-modal" class="modal-overlay hidden" style="z-index: 200;">
@@ -414,7 +366,7 @@
         </div>
     </div>
 
-    <script src="js/bundle.js?v=1789822881204"></script>
+    <script src="js/bundle.js?v=1789823590056"></script>
 </body>
 
 </html>

@@ -305,8 +305,9 @@ export class UIManager {
             bluePanel.classList.add('active-turn');
             redPanel.classList.remove('active-turn');
 
-            turnSidebar.style.right = 'auto';
-            turnSidebar.style.left = '20px';
+            const leftBox = document.getElementById('left-turn-container');
+            if (leftBox) leftBox.appendChild(turnSidebar);
+
             bigText.style.color = '#3b82f6';
             if (this.game.localTeam === 'BLUE') {
                 bigText.innerHTML = 'Your<br>Turn';
@@ -318,8 +319,9 @@ export class UIManager {
             bluePanel.classList.remove('active-turn');
             redPanel.classList.add('active-turn');
 
-            turnSidebar.style.left = 'auto';
-            turnSidebar.style.right = '20px';
+            const rightBox = document.getElementById('right-turn-container');
+            if (rightBox) rightBox.appendChild(turnSidebar);
+
             bigText.style.color = '#ef4444';
             if (this.game.localTeam === 'RED') {
                 bigText.innerHTML = 'Your<br>Turn';
