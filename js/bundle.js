@@ -1696,12 +1696,13 @@ class UIManager {
         const estMaxHeight = 350;
         const estMaxWidth = 270;
 
-        let safeX = x - rect.left + 10;
-        let safeY = y - rect.top + 10;
+        let localX = x - rect.left;
+        let localY = y - rect.top;
 
-        if (safeX + estMaxWidth > rect.width) {
-            safeX = Math.max(10, rect.width - estMaxWidth - 20);
-        }
+        let safeX = localX > rect.width / 2 ? localX - estMaxWidth - 10 : localX + 10;
+        let safeY = localY + 10;
+
+        if (safeX < 10) safeX = 10;
         if (safeY + estMaxHeight > rect.height) {
             safeY = Math.max(10, rect.height - estMaxHeight - 20);
         }
@@ -1773,14 +1774,15 @@ class UIManager {
                 this.contextMenu.classList.remove('hidden');
 
                 const rect = this.canvas.getBoundingClientRect();
-                let safeX = e.clientX - rect.left + 10;
-                let safeY = e.clientY - rect.top + 10;
+                let localX = e.clientX - rect.left;
+                let localY = e.clientY - rect.top;
                 let estMaxWidth = 350;
                 let estMaxHeight = 350;
 
-                if (safeX + estMaxWidth > rect.width) {
-                    safeX = Math.max(10, rect.width - estMaxWidth - 20);
-                }
+                let safeX = localX > rect.width / 2 ? localX - estMaxWidth - 10 : localX + 10;
+                let safeY = localY + 10;
+
+                if (safeX < 10) safeX = 10;
                 if (safeY + estMaxHeight > rect.height) {
                     safeY = Math.max(10, rect.height - estMaxHeight - 20);
                 }
@@ -1940,14 +1942,15 @@ class UIManager {
                 this.contextMenu.classList.remove('hidden');
 
                 const rect = this.canvas.getBoundingClientRect();
-                let safeX = e.clientX - rect.left + 10;
-                let safeY = e.clientY - rect.top + 10;
+                let localX = e.clientX - rect.left;
+                let localY = e.clientY - rect.top;
                 let estMaxWidth = 350;
                 let estMaxHeight = 350;
 
-                if (safeX + estMaxWidth > rect.width) {
-                    safeX = Math.max(10, rect.width - estMaxWidth - 20);
-                }
+                let safeX = localX > rect.width / 2 ? localX - estMaxWidth - 10 : localX + 10;
+                let safeY = localY + 10;
+
+                if (safeX < 10) safeX = 10;
                 if (safeY + estMaxHeight > rect.height) {
                     safeY = Math.max(10, rect.height - estMaxHeight - 20);
                 }
