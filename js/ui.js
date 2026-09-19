@@ -361,11 +361,7 @@ export class UIManager {
             if (leftBox) leftBox.appendChild(turnSidebar);
 
             bigText.style.color = '#3b82f6';
-            if (this.game.localTeam === 'BLUE') {
-                bigText.innerHTML = 'Your<br>Turn';
-            } else {
-                bigText.innerHTML = `${this.game.blueName}<br>Turn`;
-            }
+            bigText.style.color = '#3b82f6';
             skipBtn.classList.remove('btn-red');
         } else {
             bluePanel.classList.remove('active-turn');
@@ -375,11 +371,7 @@ export class UIManager {
             if (rightBox) rightBox.appendChild(turnSidebar);
 
             bigText.style.color = '#ef4444';
-            if (this.game.localTeam === 'RED') {
-                bigText.innerHTML = 'Your<br>Turn';
-            } else {
-                bigText.innerHTML = `${this.game.redName}<br>Turn`;
-            }
+            bigText.style.color = '#ef4444';
             skipBtn.classList.add('btn-red');
         }
 
