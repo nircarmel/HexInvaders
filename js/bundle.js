@@ -179,10 +179,7 @@ class HexGame {
 
         this.logSystem(`Game initialized. ${this.blueName}'s Turn.`);
         this.saveSnapshot();
-
-        if (this.timerDuration > 0) {
-            this.startTimer();
-        }
+        // Timers in network games will be started manually upon connection
     }
 
     startTimer() {
@@ -1991,7 +1988,12 @@ class NetworkManager {
             this.setupConnection();
 
             document.getElementById('online-modal').classList.add('hidden');
-            if (this.game) this.game.logSystem("Opponent Connected! Game Start! You are BLUE.");
+            if (this.game) {
+                this.game.logSystem("Opponent Connected! Game Start! You are BLUE.");
+                if (this.game.timerDuration > 0) {
+                    this.game.startTimer();
+                }
+            }
             if (this.ui) this.ui.updateHUD();
         });
 
@@ -2494,6 +2496,13 @@ document.addEventListener('DOMContentLoaded', () => {
         game.logSystem(`Game Started! Initialized ${config.width}x${config.height} Grid.`);
 
         window.gameAPI = { game, render, input, ui, network: GLOBAL_NETWORK, ai: GLOBAL_AI };
+
+        // Do not start timer if we are the Host waiting for a Guest to connect.
+        // The NetworkManager will start it when the guest joins.
+        const isWaitingHost = GLOBAL_MODE === 'ONLINE' && (!GLOBAL_NETWORK || GLOBAL_NETWORK.isHost) && !overrideConfig;
+        if (!isWaitingHost && game.timerDuration > 0) {
+            game.startTimer();
+        }
     }
 });
 

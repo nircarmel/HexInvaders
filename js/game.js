@@ -50,10 +50,7 @@ export class HexGame {
 
         this.logSystem(`Game initialized. ${this.blueName}'s Turn.`);
         this.saveSnapshot();
-
-        if (this.timerDuration > 0) {
-            this.startTimer();
-        }
+        // Timers in network games will be started manually upon connection
     }
 
     startTimer() {

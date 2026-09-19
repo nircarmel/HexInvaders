@@ -231,5 +231,12 @@ document.addEventListener('DOMContentLoaded', () => {
         game.logSystem(`Game Started! Initialized ${config.width}x${config.height} Grid.`);
 
         window.gameAPI = { game, render, input, ui, network: GLOBAL_NETWORK, ai: GLOBAL_AI };
+
+        // Do not start timer if we are the Host waiting for a Guest to connect.
+        // The NetworkManager will start it when the guest joins.
+        const isWaitingHost = GLOBAL_MODE === 'ONLINE' && (!GLOBAL_NETWORK || GLOBAL_NETWORK.isHost) && !overrideConfig;
+        if (!isWaitingHost && game.timerDuration > 0) {
+            game.startTimer();
+        }
     }
 });

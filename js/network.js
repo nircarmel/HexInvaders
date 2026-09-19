@@ -77,7 +77,12 @@ class NetworkManager {
             this.setupConnection();
 
             document.getElementById('online-modal').classList.add('hidden');
-            if (this.game) this.game.logSystem("Opponent Connected! Game Start! You are BLUE.");
+            if (this.game) {
+                this.game.logSystem("Opponent Connected! Game Start! You are BLUE.");
+                if (this.game.timerDuration > 0) {
+                    this.game.startTimer();
+                }
+            }
             if (this.ui) this.ui.updateHUD();
         });
 
