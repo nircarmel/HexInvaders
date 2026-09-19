@@ -202,8 +202,15 @@ export class UIManager {
     }
 
     updateHUD() {
-        document.getElementById('blue-credits').innerText = this.game.credits['BLUE'];
-        document.getElementById('red-credits').innerText = this.game.credits['RED'];
+        const bPanelTitle = document.querySelector('.team-panel.blue-team .team-title');
+        const rPanelTitle = document.querySelector('.team-panel.red-team .team-title');
+        if (bPanelTitle) bPanelTitle.innerHTML = `${this.game.blueName} Cr: <span id="blue-credits">${this.game.credits['BLUE']}</span>`;
+        if (rPanelTitle) rPanelTitle.innerHTML = `${this.game.redName} Cr: <span id="red-credits">${this.game.credits['RED']}</span>`;
+
+        const bCredits = document.getElementById('blue-credits');
+        const rCredits = document.getElementById('red-credits');
+        if (bCredits) bCredits.innerText = this.game.credits['BLUE'];
+        if (rCredits) rCredits.innerText = this.game.credits['RED'];
 
         const goalText = document.getElementById('help-goal-text');
         if (goalText && this.game.config) {
@@ -228,7 +235,7 @@ export class UIManager {
             if (this.game.localTeam === 'BLUE') {
                 bigText.innerHTML = 'Your<br>Turn';
             } else {
-                bigText.innerHTML = 'Blue<br>Turn';
+                bigText.innerHTML = `${this.game.blueName}<br>Turn`;
             }
             skipBtn.classList.remove('btn-red');
         } else {
@@ -241,7 +248,7 @@ export class UIManager {
             if (this.game.localTeam === 'RED') {
                 bigText.innerHTML = 'Your<br>Turn';
             } else {
-                bigText.innerHTML = 'Red<br>Turn';
+                bigText.innerHTML = `${this.game.redName}<br>Turn`;
             }
             skipBtn.classList.add('btn-red');
         }

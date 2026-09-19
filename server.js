@@ -15,11 +15,64 @@ const MIME_TYPES = {
     '.gif': 'image/gif'
 };
 
+let lobby = [];
+
 const server = http.createServer((request, response) => {
-    // Strip query parameters naturally using the base URL
     let urlString = request.url;
     if (urlString.includes('?')) {
         urlString = urlString.split('?')[0];
+    }
+
+    if (urlString === '/api/lobby') {
+        response.setHeader('Access-Control-Allow-Origin', '*');
+        response.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
+        response.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+
+        if (request.method === 'OPTIONS') {
+            response.writeHead(204);
+            response.end();
+            return;
+        }
+
+        if (request.method === 'GET') {
+            const now = Date.now();
+            lobby = lobby.filter(g => (now - g.time) < 2 * 60 * 60 * 1000);
+            response.writeHead(200, { 'Content-Type': 'application/json' });
+            response.end(JSON.stringify(lobby));
+            return;
+        }
+
+        if (request.method === 'POST') {
+            let body = '';
+            request.on('data', chunk => body += chunk);
+            request.on('end', () => {
+                try {
+                    const data = JSON.parse(body);
+                    if (data.hostId && data.name) {
+                        lobby.push({ hostId: data.hostId, name: data.name, time: Date.now() });
+                    }
+                } catch (e) { }
+                response.writeHead(200, { 'Content-Type': 'application/json' });
+                response.end(JSON.stringify({ success: true }));
+            });
+            return;
+        }
+
+        if (request.method === 'DELETE') {
+            let body = '';
+            request.on('data', chunk => body += chunk);
+            request.on('end', () => {
+                try {
+                    const data = JSON.parse(body);
+                    if (data.hostId) {
+                        lobby = lobby.filter(g => g.hostId !== data.hostId);
+                    }
+                } catch (e) { }
+                response.writeHead(200, { 'Content-Type': 'application/json' });
+                response.end(JSON.stringify({ success: true }));
+            });
+            return;
+        }
     }
 
     let filePath = '.' + urlString;

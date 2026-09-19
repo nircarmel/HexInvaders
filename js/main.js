@@ -65,6 +65,70 @@ document.addEventListener('DOMContentLoaded', () => {
         GLOBAL_MODE = 'ONLINE';
     });
 
+    const lobbyModal = document.getElementById('lobby-modal');
+
+    function fetchLobby() {
+        const lobbyList = document.getElementById('lobby-list');
+        lobbyList.innerHTML = '<p style="color: #ccc; text-align: center;">Loading games...</p>';
+        fetch('/api/lobby')
+            .then(res => res.json())
+            .then(data => {
+                lobbyList.innerHTML = '';
+                if (data.length === 0) {
+                    lobbyList.innerHTML = '<p style="color: #ccc; text-align: center; margin-top: 20px;">No online games found.</p>';
+                    return;
+                }
+                data.forEach(game => {
+                    const div = document.createElement('div');
+                    div.style.cssText = 'padding: 10px; background: rgba(255,255,255,0.1); border-radius: 4px; display: flex; justify-content: space-between; align-items: center;';
+                    div.innerHTML = `
+                        <div>
+                            <strong style="color: #60a5fa;">${game.name}'s Game</strong>
+                            <div style="font-size: 0.8rem; color: #aaa;">Host ID: ${game.hostId.substring(0, 8)}...</div>
+                        </div>
+                        <button class="btn-primary" style="padding: 5px 15px; font-size: 0.9rem;">Join</button>
+                    `;
+                    div.querySelector('button').onclick = () => {
+                        lobbyModal.classList.add('hidden');
+                        document.getElementById('online-modal').classList.remove('hidden');
+                        const mContent = document.querySelector('#online-modal .menu-content');
+                        if (mContent) mContent.innerHTML = '<h2>Connecting...</h2><p>Waiting for Host Rules...</p>';
+
+                        GLOBAL_MODE = 'ONLINE';
+                        const myName = document.getElementById('player-name').value || 'Guest';
+                        GLOBAL_NETWORK = new NetworkManager(game.hostId, myName);
+
+                        window.onReceiveNetworkConfig = (remoteConfig) => {
+                            document.getElementById('online-modal').classList.add('hidden');
+                            uiLayer.classList.remove('hidden');
+                            remoteConfig.redName = myName;
+                            launchGame(remoteConfig);
+                            if (GLOBAL_NETWORK) {
+                                GLOBAL_NETWORK.bindEngines(GLOBAL_GAME, GLOBAL_UI);
+                                if (GLOBAL_NETWORK.ui) GLOBAL_NETWORK.ui.updateHUD();
+                            }
+                        };
+                    };
+                    lobbyList.appendChild(div);
+                });
+            })
+            .catch(err => {
+                lobbyList.innerHTML = '<p style="color: #ef4444; text-align: center;">Failed to load lobby list.</p>';
+            });
+    }
+
+    document.getElementById('btn-mode-find').addEventListener('click', () => {
+        mainMenu.classList.add('hidden');
+        lobbyModal.classList.remove('hidden');
+        fetchLobby();
+    });
+
+    document.getElementById('btn-lobby-refresh').addEventListener('click', fetchLobby);
+    document.getElementById('btn-lobby-back').addEventListener('click', () => {
+        lobbyModal.classList.add('hidden');
+        mainMenu.classList.remove('hidden');
+    });
+
     // Map Radio configurations to Custom Input row visibility
     document.querySelectorAll('input[name="cfg-dims"]').forEach(r => {
         r.addEventListener('change', (e) => {
@@ -124,7 +188,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 flagCost: parseInt(document.getElementById('cfg-flagCost').value) || 10,
                 barricadeCost: parseInt(document.getElementById('cfg-barricadeCost').value) || 5,
                 maxStrength: parseInt(document.getElementById('cfg-maxStrength').value) || 10,
-                maxSpeed: parseInt(document.getElementById('cfg-maxSpeed').value) || 5
+                maxSpeed: parseInt(document.getElementById('cfg-maxSpeed').value) || 5,
+                blueName: document.getElementById('player-name').value || 'Player 1',
+                redName: GLOBAL_MODE === 'AI' ? 'Bot' : 'Player 2'
             };
         }
         configModal.classList.add('hidden');

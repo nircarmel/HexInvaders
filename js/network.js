@@ -1,10 +1,11 @@
 // js/network.js
 class NetworkManager {
-    constructor(hostId = null) {
+    constructor(hostId = null, guestName = 'Guest') {
         this.peer = null;
         this.conn = null;
         this.isHost = !hostId;
         this.connected = false;
+        this.guestName = guestName;
 
         // These will be bound after game setup
         this.ui = null;
@@ -48,6 +49,13 @@ class NetworkManager {
         this.peer.on('open', (id) => {
             const link = `${window.location.origin}${window.location.pathname}?host=${id}`;
             document.getElementById('host-link-input').value = link;
+
+            const pName = document.getElementById('player-name').value || 'Host';
+            fetch('/api/lobby', {
+                method: 'POST',
+                body: JSON.stringify({ hostId: id, name: pName }),
+                headers: { 'Content-Type': 'application/json' }
+            }).catch(console.error);
         });
 
         this.peer.on('connection', (conn) => {
@@ -91,6 +99,18 @@ class NetworkManager {
                     type: 'CONFIG',
                     config: this.game.config
                 });
+
+                // Remove game from open lobbies
+                fetch('/api/lobby', {
+                    method: 'DELETE',
+                    body: JSON.stringify({ hostId: this.peer.id }),
+                    headers: { 'Content-Type': 'application/json' }
+                }).catch(console.error);
+            } else {
+                this.sendData({
+                    type: 'GUEST_JOIN',
+                    name: this.guestName
+                });
             }
             if (this.ui) this.ui.updateHUD();
         });
@@ -116,6 +136,12 @@ class NetworkManager {
             if (!this.isHost && window.onReceiveNetworkConfig) {
                 window.onReceiveNetworkConfig(data.config);
             }
+            return;
+        }
+
+        if (data.type === 'GUEST_JOIN' && this.isHost && this.game) {
+            this.game.redName = data.name;
+            if (this.ui) this.ui.updateHUD();
             return;
         }
 

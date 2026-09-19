@@ -41,7 +41,10 @@ export class HexGame {
         this.historyIndex = 0;
         this.activeCombats = [];
 
-        this.logSystem("Game initialized. Blue's Turn.");
+        this.blueName = config.blueName || 'Blue';
+        this.redName = config.redName || 'Red';
+
+        this.logSystem(`Game initialized. ${this.blueName}'s Turn.`);
         this.saveSnapshot();
     }
 
@@ -180,7 +183,8 @@ export class HexGame {
     switchPhase() {
         this.activeTeam = this.activeTeam === 'BLUE' ? 'RED' : 'BLUE';
         this.actionUsed = false;
-        this.logSystem(`${this.activeTeam}'s Turn.`);
+        const currentName = this.activeTeam === 'BLUE' ? this.blueName : this.redName;
+        this.logSystem(`${currentName}'s Turn.`);
         return true;
     }
 
@@ -617,13 +621,14 @@ export class HexGame {
                 }
             }
         }
-        if (bInvaded) this.setWinner('BLUE', 'Blue successfully invaded the Red zone!');
-        if (rInvaded) this.setWinner('RED', 'Red successfully invaded the Blue zone!');
+        if (bInvaded) this.setWinner('BLUE', `${this.blueName} successfully invaded the opponent's zone!`);
+        if (rInvaded) this.setWinner('RED', `${this.redName} successfully invaded the opponent's zone!`);
     }
 
     setWinner(team, reason) {
         this.winner = team;
-        this.logSystem(`GAME OVER. ${team} wins! ${reason}`);
+        const winName = team === 'BLUE' ? this.blueName : this.redName;
+        this.logSystem(`GAME OVER. ${winName} wins! ${reason}`);
         if (this.onWinner) this.onWinner(team, reason);
     }
 }

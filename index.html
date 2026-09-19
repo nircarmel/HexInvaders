@@ -19,17 +19,23 @@
             <div class="modal-card glass-panel pop-in" style="width: 400px; text-align: center;">
                 <h1 style="color: #60a5fa; margin-bottom: 30px; font-size: 2.5rem;">Hex-Invaders</h1>
                 <div style="display: flex; flex-direction: column; gap: 15px;">
+                    <input type="text" id="player-name" placeholder="Enter Your Name..." class="modern-input"
+                        style="color: white; font-size: 1.1rem; padding: 12px; text-align: center; border: 1px solid rgba(255,255,255,0.2); background: rgba(0,0,0,0.5); border-radius: 4px; font-weight: bold; margin-bottom: 15px;"
+                        maxlength="15" value="Player">
+
                     <button id="btn-mode-local" class="btn-primary large">Local 1v1</button>
                     <button id="btn-mode-ai" class="btn-primary large">Player vs Computer</button>
                     <button id="btn-mode-online" class="btn-primary large"
-                        style="background: linear-gradient(135deg, #10b981, #059669);">Play Online (Host Game)</button>
+                        style="background: linear-gradient(135deg, #10b981, #059669);">Host Online Game</button>
+                    <button id="btn-mode-find" class="btn-primary large"
+                        style="background: linear-gradient(135deg, #fbbf24, #d97706);">Find Online Game</button>
                 </div>
             </div>
         </div>
 
         <!-- Online Link UI -->
         <div id="online-modal" class="modal-overlay hidden" style="z-index: 300; background: rgba(0,0,0,0.85);">
-            <div class="modal-card glass-panel pop-in" style="width: 450px; text-align: center;">
+            <div class="modal-card glass-panel pop-in menu-content" style="width: 450px; text-align: center;">
                 <h2 style="margin-bottom: 15px;">Waiting for opponent...</h2>
                 <p>Send this link to a friend to instantly join your game!</p>
                 <div style="display: flex; margin: 20px 0;">
@@ -38,6 +44,24 @@
                     <button id="btn-copy-link" class="btn-primary"
                         style="border-radius: 0 4px 4px 0; padding: 0 20px;">Copy</button>
                 </div>
+            </div>
+        </div>
+
+        <!-- Lobby Browser UI -->
+        <div id="lobby-modal" class="modal-overlay hidden" style="z-index: 300; background: rgba(0,0,0,0.85);">
+            <div class="modal-card glass-panel pop-in"
+                style="width: 500px; max-height: 80vh; display: flex; flex-direction: column;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                    <h2 style="margin: 0; color: #fbbf24;">Open Games Lobby</h2>
+                    <button id="btn-lobby-refresh" class="btn-icon"
+                        style="background: rgba(255,255,255,0.1); width: 32px; height: 32px; border-radius: 4px;">↻</button>
+                </div>
+                <div id="lobby-list"
+                    style="display: flex; flex-direction: column; gap: 10px; overflow-y: auto; flex: 1; min-height: 150px; padding-right: 5px;">
+                    <!-- Injected rows -->
+                </div>
+                <button id="btn-lobby-back" class="btn-primary"
+                    style="margin-top: 20px; background: rgba(100,100,100,0.5);">Back to Menu</button>
             </div>
         </div>
 

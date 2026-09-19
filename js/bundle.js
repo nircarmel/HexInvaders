@@ -170,7 +170,10 @@ class HexGame {
         this.historyIndex = 0;
         this.activeCombats = [];
 
-        this.logSystem("Game initialized. Blue's Turn.");
+        this.blueName = config.blueName || 'Blue';
+        this.redName = config.redName || 'Red';
+
+        this.logSystem(`Game initialized. ${this.blueName}'s Turn.`);
         this.saveSnapshot();
     }
 
@@ -309,7 +312,8 @@ class HexGame {
     switchPhase() {
         this.activeTeam = this.activeTeam === 'BLUE' ? 'RED' : 'BLUE';
         this.actionUsed = false;
-        this.logSystem(`${this.activeTeam}'s Turn.`);
+        const currentName = this.activeTeam === 'BLUE' ? this.blueName : this.redName;
+        this.logSystem(`${currentName}'s Turn.`);
         return true;
     }
 
@@ -746,13 +750,14 @@ class HexGame {
                 }
             }
         }
-        if (bInvaded) this.setWinner('BLUE', 'Blue successfully invaded the Red zone!');
-        if (rInvaded) this.setWinner('RED', 'Red successfully invaded the Blue zone!');
+        if (bInvaded) this.setWinner('BLUE', `${this.blueName} successfully invaded the opponent's zone!`);
+        if (rInvaded) this.setWinner('RED', `${this.redName} successfully invaded the opponent's zone!`);
     }
 
     setWinner(team, reason) {
         this.winner = team;
-        this.logSystem(`GAME OVER. ${team} wins! ${reason}`);
+        const winName = team === 'BLUE' ? this.blueName : this.redName;
+        this.logSystem(`GAME OVER. ${winName} wins! ${reason}`);
         if (this.onWinner) this.onWinner(team, reason);
     }
 }
@@ -1409,8 +1414,15 @@ class UIManager {
     }
 
     updateHUD() {
-        document.getElementById('blue-credits').innerText = this.game.credits['BLUE'];
-        document.getElementById('red-credits').innerText = this.game.credits['RED'];
+        const bPanelTitle = document.querySelector('.team-panel.blue-team .team-title');
+        const rPanelTitle = document.querySelector('.team-panel.red-team .team-title');
+        if (bPanelTitle) bPanelTitle.innerHTML = `${this.game.blueName} Cr: <span id="blue-credits">${this.game.credits['BLUE']}</span>`;
+        if (rPanelTitle) rPanelTitle.innerHTML = `${this.game.redName} Cr: <span id="red-credits">${this.game.credits['RED']}</span>`;
+
+        const bCredits = document.getElementById('blue-credits');
+        const rCredits = document.getElementById('red-credits');
+        if (bCredits) bCredits.innerText = this.game.credits['BLUE'];
+        if (rCredits) rCredits.innerText = this.game.credits['RED'];
 
         const goalText = document.getElementById('help-goal-text');
         if (goalText && this.game.config) {
@@ -1435,7 +1447,7 @@ class UIManager {
             if (this.game.localTeam === 'BLUE') {
                 bigText.innerHTML = 'Your<br>Turn';
             } else {
-                bigText.innerHTML = 'Blue<br>Turn';
+                bigText.innerHTML = `${this.game.blueName}<br>Turn`;
             }
             skipBtn.classList.remove('btn-red');
         } else {
@@ -1448,7 +1460,7 @@ class UIManager {
             if (this.game.localTeam === 'RED') {
                 bigText.innerHTML = 'Your<br>Turn';
             } else {
-                bigText.innerHTML = 'Red<br>Turn';
+                bigText.innerHTML = `${this.game.redName}<br>Turn`;
             }
             skipBtn.classList.add('btn-red');
         }
@@ -1834,11 +1846,12 @@ class UIManager {
 // --- network.js ---
 // js/network.js
 class NetworkManager {
-    constructor(hostId = null) {
+    constructor(hostId = null, guestName = 'Guest') {
         this.peer = null;
         this.conn = null;
         this.isHost = !hostId;
         this.connected = false;
+        this.guestName = guestName;
 
         // These will be bound after game setup
         this.ui = null;
@@ -1882,6 +1895,13 @@ class NetworkManager {
         this.peer.on('open', (id) => {
             const link = `${window.location.origin}${window.location.pathname}?host=${id}`;
             document.getElementById('host-link-input').value = link;
+
+            const pName = document.getElementById('player-name').value || 'Host';
+            fetch('/api/lobby', {
+                method: 'POST',
+                body: JSON.stringify({ hostId: id, name: pName }),
+                headers: { 'Content-Type': 'application/json' }
+            }).catch(console.error);
         });
 
         this.peer.on('connection', (conn) => {
@@ -1925,6 +1945,18 @@ class NetworkManager {
                     type: 'CONFIG',
                     config: this.game.config
                 });
+
+                // Remove game from open lobbies
+                fetch('/api/lobby', {
+                    method: 'DELETE',
+                    body: JSON.stringify({ hostId: this.peer.id }),
+                    headers: { 'Content-Type': 'application/json' }
+                }).catch(console.error);
+            } else {
+                this.sendData({
+                    type: 'GUEST_JOIN',
+                    name: this.guestName
+                });
             }
             if (this.ui) this.ui.updateHUD();
         });
@@ -1950,6 +1982,12 @@ class NetworkManager {
             if (!this.isHost && window.onReceiveNetworkConfig) {
                 window.onReceiveNetworkConfig(data.config);
             }
+            return;
+        }
+
+        if (data.type === 'GUEST_JOIN' && this.isHost && this.game) {
+            this.game.redName = data.name;
+            if (this.ui) this.ui.updateHUD();
             return;
         }
 
@@ -2189,6 +2227,70 @@ document.addEventListener('DOMContentLoaded', () => {
         GLOBAL_MODE = 'ONLINE';
     });
 
+    const lobbyModal = document.getElementById('lobby-modal');
+
+    function fetchLobby() {
+        const lobbyList = document.getElementById('lobby-list');
+        lobbyList.innerHTML = '<p style="color: #ccc; text-align: center;">Loading games...</p>';
+        fetch('/api/lobby')
+            .then(res => res.json())
+            .then(data => {
+                lobbyList.innerHTML = '';
+                if (data.length === 0) {
+                    lobbyList.innerHTML = '<p style="color: #ccc; text-align: center; margin-top: 20px;">No online games found.</p>';
+                    return;
+                }
+                data.forEach(game => {
+                    const div = document.createElement('div');
+                    div.style.cssText = 'padding: 10px; background: rgba(255,255,255,0.1); border-radius: 4px; display: flex; justify-content: space-between; align-items: center;';
+                    div.innerHTML = `
+                        <div>
+                            <strong style="color: #60a5fa;">${game.name}'s Game</strong>
+                            <div style="font-size: 0.8rem; color: #aaa;">Host ID: ${game.hostId.substring(0, 8)}...</div>
+                        </div>
+                        <button class="btn-primary" style="padding: 5px 15px; font-size: 0.9rem;">Join</button>
+                    `;
+                    div.querySelector('button').onclick = () => {
+                        lobbyModal.classList.add('hidden');
+                        document.getElementById('online-modal').classList.remove('hidden');
+                        const mContent = document.querySelector('#online-modal .menu-content');
+                        if (mContent) mContent.innerHTML = '<h2>Connecting...</h2><p>Waiting for Host Rules...</p>';
+
+                        GLOBAL_MODE = 'ONLINE';
+                        const myName = document.getElementById('player-name').value || 'Guest';
+                        GLOBAL_NETWORK = new NetworkManager(game.hostId, myName);
+
+                        window.onReceiveNetworkConfig = (remoteConfig) => {
+                            document.getElementById('online-modal').classList.add('hidden');
+                            uiLayer.classList.remove('hidden');
+                            remoteConfig.redName = myName;
+                            launchGame(remoteConfig);
+                            if (GLOBAL_NETWORK) {
+                                GLOBAL_NETWORK.bindEngines(GLOBAL_GAME, GLOBAL_UI);
+                                if (GLOBAL_NETWORK.ui) GLOBAL_NETWORK.ui.updateHUD();
+                            }
+                        };
+                    };
+                    lobbyList.appendChild(div);
+                });
+            })
+            .catch(err => {
+                lobbyList.innerHTML = '<p style="color: #ef4444; text-align: center;">Failed to load lobby list.</p>';
+            });
+    }
+
+    document.getElementById('btn-mode-find').addEventListener('click', () => {
+        mainMenu.classList.add('hidden');
+        lobbyModal.classList.remove('hidden');
+        fetchLobby();
+    });
+
+    document.getElementById('btn-lobby-refresh').addEventListener('click', fetchLobby);
+    document.getElementById('btn-lobby-back').addEventListener('click', () => {
+        lobbyModal.classList.add('hidden');
+        mainMenu.classList.remove('hidden');
+    });
+
     // Map Radio configurations to Custom Input row visibility
     document.querySelectorAll('input[name="cfg-dims"]').forEach(r => {
         r.addEventListener('change', (e) => {
@@ -2248,7 +2350,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 flagCost: parseInt(document.getElementById('cfg-flagCost').value) || 10,
                 barricadeCost: parseInt(document.getElementById('cfg-barricadeCost').value) || 5,
                 maxStrength: parseInt(document.getElementById('cfg-maxStrength').value) || 10,
-                maxSpeed: parseInt(document.getElementById('cfg-maxSpeed').value) || 5
+                maxSpeed: parseInt(document.getElementById('cfg-maxSpeed').value) || 5,
+                blueName: document.getElementById('player-name').value || 'Player 1',
+                redName: GLOBAL_MODE === 'AI' ? 'Bot' : 'Player 2'
             };
         }
         configModal.classList.add('hidden');
