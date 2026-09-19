@@ -222,10 +222,12 @@ export class UIManager {
             const isDeploy = !this.contextDeployPanel.classList.contains('hidden');
             if (!isDeploy) return;
 
-            const centerCol = (this.game.cols - 1) / 2;
             const centerRow = (this.game.rows - 1) / 2;
 
-            const pt = hexMath.hexToPixel(centerCol, centerRow, this.render.hexRadius);
+            // X placed offset from the clicked hex so it doesn't cover it, towards the center
+            let targetCol = this._contextTarget.col < this.game.cols / 2 ? this._contextTarget.col + 3 : this._contextTarget.col - 3;
+
+            const pt = hexMath.hexToPixel(targetCol, centerRow, this.render.hexRadius);
 
             // Apply camera offsets
             const screenX = pt.x * this.render.camera.zoom + this.render.camera.x;
