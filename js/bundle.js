@@ -1340,14 +1340,24 @@ class RenderEngine {
             }
             const pt = hexMath.hexToPixel(exp.col, exp.row, this.hexRadius, this.ox, this.oy);
             // Apply Camera Transform
-            const size = this.hexRadius * 4 * this.camera.zoom;
             const screenX = (pt.x * this.camera.zoom) + this.camera.x;
             const screenY = (pt.y * this.camera.zoom) + this.camera.y;
 
+            // Map canvas pixels back to DOM client pixels
+            const rect = this.canvas.getBoundingClientRect();
+            const scaleX = rect.width / this.canvas.width;
+            const scaleY = rect.height / this.canvas.height;
+
+            const domX = (screenX * scaleX) + rect.left;
+            const domY = (screenY * scaleY) + rect.top;
+
+            const size = (this.hexRadius * 4 * this.camera.zoom) * scaleX;
+
             // Center image over tile with a visual anchor shift upwards
             if (exp.el) {
-                exp.el.style.left = (screenX - size / 2) + 'px';
-                exp.el.style.top = (screenY - size / 2 - size * 0.075) + 'px';
+                exp.el.style.display = 'block'; // Ensure it's shown once positioned
+                exp.el.style.left = (domX - size / 2) + 'px';
+                exp.el.style.top = (domY - size / 2 - size * 0.075) + 'px';
                 exp.el.style.width = size + 'px';
                 exp.el.style.height = size + 'px';
 
