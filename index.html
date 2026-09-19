@@ -151,9 +151,14 @@
                 <h1 id="big-turn-text"
                     style="font-size: 3.5rem; font-weight: 900; text-transform: uppercase; text-shadow: 0 0 15px currentColor; margin: 0; color: #ef4444; text-align: center; line-height: 1.1;">
                     Your<br>Turn</h1>
-                <div id="turn-timer" class="hidden"
-                    style="font-size: 2rem; font-weight: bold; color: white; background: rgba(0,0,0,0.5); padding: 5px 20px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); margin-top: -10px; font-variant-numeric: tabular-nums;">
-                    30s
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <button id="btn-mute-timer" class="btn-icon"
+                        style="flex-shrink: 0; width: 34px; height: 34px; border-radius: 6px; background: rgba(255,255,255,0.1); display: none; align-items: center; justify-content: center; font-size: 1.1rem; padding: 0; margin-top: -10px;"
+                        title="Mute Timer Sound">🔊</button>
+                    <div id="turn-timer" class="hidden"
+                        style="font-size: 2rem; font-weight: bold; color: white; background: rgba(0,0,0,0.5); padding: 5px 20px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.2); margin-top: -10px; font-variant-numeric: tabular-nums;">
+                        30s
+                    </div>
                 </div>
                 <button id="btn-end-turn" class="btn-primary btn-red" style="width: 200px;">Skip Action</button>
             </div>
@@ -400,7 +405,7 @@
         </div>
     </div>
 
-    <script src="js/bundle.js?v=1789798323219"></script>
+    <script src="js/bundle.js?v=1789798748183"></script>
 </body>
 
 </html>

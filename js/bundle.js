@@ -1306,6 +1306,8 @@ class UIManager {
         this.bindEvents();
         this.updateHUD();
 
+        this.isTimerMuted = false;
+
         this.game.onLog = () => this.refreshLog();
         this.game.onCombat = (c, r, instant = false) => {
             if (instant) {
@@ -1338,6 +1340,14 @@ class UIManager {
         if (this.btnToggleLog && this.floatingLog) {
             this.btnToggleLog.addEventListener('click', () => {
                 this.floatingLog.classList.toggle('hidden');
+            });
+        }
+
+        this.btnMuteTimer = document.getElementById('btn-mute-timer');
+        if (this.btnMuteTimer) {
+            this.btnMuteTimer.addEventListener('click', () => {
+                this.isTimerMuted = !this.isTimerMuted;
+                this.btnMuteTimer.innerText = this.isTimerMuted ? '🔇' : '🔊';
             });
         }
 
@@ -1528,14 +1538,17 @@ class UIManager {
 
     updateHUDTimer(timeRemaining) {
         const timerDiv = document.getElementById('turn-timer');
+        const muteBtn = document.getElementById('btn-mute-timer');
         if (!timerDiv) return;
 
         if (this.game.timerDuration > 0) {
             timerDiv.classList.remove('hidden');
+            if (muteBtn) muteBtn.style.display = 'flex';
+
             timerDiv.style.color = timeRemaining <= 5 ? '#ef4444' : 'white';
             timerDiv.innerText = `${timeRemaining}s`;
 
-            if (timeRemaining > 0 && timeRemaining <= 3) {
+            if (timeRemaining > 0 && timeRemaining <= 3 && !this.isTimerMuted) {
                 const isMyTurn = this.game.activeTeam === this.game.localTeam || this.game.gameMode === 'LOCAL';
                 if (isMyTurn) {
                     this.playTickSound();
@@ -1543,6 +1556,7 @@ class UIManager {
             }
         } else {
             timerDiv.classList.add('hidden');
+            if (muteBtn) muteBtn.style.display = 'none';
         }
     }
 
