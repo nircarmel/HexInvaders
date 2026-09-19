@@ -240,7 +240,10 @@ export class UIManager {
             timerDiv.innerText = `${timeRemaining}s`;
 
             if (timeRemaining > 0 && timeRemaining <= 3) {
-                this.playTickSound();
+                const isMyTurn = this.game.activeTeam === this.game.localTeam || this.game.gameMode === 'LOCAL';
+                if (isMyTurn) {
+                    this.playTickSound();
+                }
             }
         } else {
             timerDiv.classList.add('hidden');

@@ -1536,7 +1536,10 @@ class UIManager {
             timerDiv.innerText = `${timeRemaining}s`;
 
             if (timeRemaining > 0 && timeRemaining <= 3) {
-                this.playTickSound();
+                const isMyTurn = this.game.activeTeam === this.game.localTeam || this.game.gameMode === 'LOCAL';
+                if (isMyTurn) {
+                    this.playTickSound();
+                }
             }
         } else {
             timerDiv.classList.add('hidden');
@@ -2560,7 +2563,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Sync initial HUD state
         ui.updateHUD();
-        game.logSystem(`Game Started! Initialized ${config.width}x${config.height} Grid.`);
+        game.logSystem(`Game Started! Grid: ${config.width}x${config.height} | Mode: ${config.mode}`);
 
         window.gameAPI = { game, render, input, ui, network: GLOBAL_NETWORK, ai: GLOBAL_AI };
 

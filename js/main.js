@@ -228,7 +228,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // Sync initial HUD state
         ui.updateHUD();
-        game.logSystem(`Game Started! Initialized ${config.width}x${config.height} Grid.`);
+        game.logSystem(`Game Started! Grid: ${config.width}x${config.height} | Mode: ${config.mode}`);
 
         window.gameAPI = { game, render, input, ui, network: GLOBAL_NETWORK, ai: GLOBAL_AI };
 
