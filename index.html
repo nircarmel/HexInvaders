@@ -78,6 +78,33 @@
         <!-- UI Layer overlaid on Canvas -->
         <div id="ui-layer" class="hidden">
 
+            <!-- Top Information Panel -->
+            <div id="top-info-panel"
+                style="position: absolute; top: 0; left: 0; width: 100%; height: 50px; pointer-events: none; display: flex; justify-content: space-between; align-items: center; padding: 0 30px; box-sizing: border-box; z-index: 60; background: #090a0f;">
+                <div
+                    style="font-family: 'Press Start 2P', cursive; font-size: 1.2rem; color: #fbbf24; text-shadow: 2px 2px 0px #000; display: flex; align-items: center; height: 100%;">
+                    HEX INVADERS
+                </div>
+                <div
+                    style="display: flex; gap: 30px; font-size: 0.8rem; color: #ccc; font-family: 'Inter', sans-serif; text-transform: uppercase; align-items: center; height: 100%;">
+                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                        <span style="font-size: 0.55rem; color: #6b7280; font-weight: bold; margin-bottom: 2px;">Game
+                            Type</span>
+                        <span id="info-mode" style="color: #fff; font-weight: 600;">Invade</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                        <span
+                            style="font-size: 0.55rem; color: #6b7280; font-weight: bold; margin-bottom: 2px;">Visibility</span>
+                        <span id="info-vis" style="color: #fff; font-weight: 600;">Nearby Units</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; align-items: center; justify-content: center;">
+                        <span style="font-size: 0.55rem; color: #6b7280; font-weight: bold; margin-bottom: 2px;">Unit
+                            Power</span>
+                        <span id="info-power" style="color: #fff; font-weight: 600;">Depleting</span>
+                    </div>
+                </div>
+            </div>
+
             <!-- Bottom Right Action Controls -->
             <div
                 style="position: absolute; bottom: 20px; right: 20px; z-index: 60; display: flex; gap: 10px; pointer-events: auto;">
@@ -98,7 +125,7 @@
             </div>
 
             <!-- Top HUD -->
-            <header class="hud-header">
+            <header class="hud-header" style="top: 70px;">
                 <div class="team-panel blue-team">
                     <h2 class="team-title" style="font-size: 1rem; text-align: center; margin: 0;">Blue Credit: <span
                             id="blue-credits">0</span></h2>
@@ -373,7 +400,7 @@
         </div>
     </div>
 
-    <script src="js/bundle.js?v=1789797750595"></script>
+    <script src="js/bundle.js?v=1789798323219"></script>
 </body>
 
 </html>

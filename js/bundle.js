@@ -1547,6 +1547,19 @@ class UIManager {
     }
 
     updateHUD() {
+        if (!this.topPanelInitialized && this.game.config) {
+            this.topPanelInitialized = true;
+            document.getElementById('info-mode').innerText = this.game.config.type === 'PLANT' ? 'Plant Flag' : 'Invade';
+
+            const vString = {
+                'HIDDEN': 'Your Units',
+                'NEARBY': 'Nearby Units',
+                'VISIBLE': 'All Units'
+            };
+            document.getElementById('info-vis').innerText = vString[this.game.config.mode] || 'Unknown';
+            document.getElementById('info-power').innerText = this.game.config.powerMode === 'DEPLETING' ? 'Depleting' : 'Constant';
+        }
+
         const bPanelTitle = document.querySelector('.team-panel.blue-team .team-title');
         const rPanelTitle = document.querySelector('.team-panel.red-team .team-title');
         if (bPanelTitle) bPanelTitle.innerHTML = `${this.game.blueName} Cr: <span id="blue-credits">${this.game.credits['BLUE']}</span>`;
