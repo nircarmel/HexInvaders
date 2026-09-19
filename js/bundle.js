@@ -1309,22 +1309,27 @@ class RenderEngine {
                 this.ctx.lineTo(x - fw / 2 + 2, y - ph / 2 + fh);
                 this.ctx.fill();
             } else if (unit.type === 'observation') {
-                const bRadius = r * 0.22;
-                const bSpacing = r * 0.26; // Moves them slightly further apart to prevent intersection
+                const eyeWidth = r * 0.55;
+                const eyeHeight = r * 0.45;
+                const pupilRadius = r * 0.18;
 
                 this.ctx.strokeStyle = '#fff';
-                this.ctx.lineWidth = Math.max(2, r * 0.15);
+                this.ctx.lineWidth = Math.max(2, r * 0.12);
                 this.ctx.lineCap = 'round';
+                this.ctx.lineJoin = 'round';
 
-                // Left lens
+                // Eye almond outline (eyelids)
                 this.ctx.beginPath();
-                this.ctx.arc(x - bSpacing, y, bRadius, 0, Math.PI * 2);
+                this.ctx.moveTo(x - eyeWidth, y);
+                this.ctx.quadraticCurveTo(x, y - eyeHeight, x + eyeWidth, y);
+                this.ctx.quadraticCurveTo(x, y + eyeHeight, x - eyeWidth, y);
                 this.ctx.stroke();
 
-                // Right lens
+                // Solid white pupil
+                this.ctx.fillStyle = '#fff';
                 this.ctx.beginPath();
-                this.ctx.arc(x + bSpacing, y, bRadius, 0, Math.PI * 2);
-                this.ctx.stroke();
+                this.ctx.arc(x, y, pupilRadius, 0, Math.PI * 2);
+                this.ctx.fill();
             } else {
                 // Ensure text sizes dynamically scale exactly to the current render diameter
                 // Perfectly centered without dots
