@@ -92,6 +92,11 @@ export class RenderEngine {
         if (hudHeader) {
             hudHeader.style.marginTop = `${Math.max(10, topOfGridY)}px`;
         }
+
+        const topPanelInner = document.getElementById('top-info-panel-inner');
+        if (topPanelInner) {
+            topPanelInner.style.width = `${Math.floor(boardPixelWidth)}px`;
+        }
     }
 
     drawHex(x, y, radius, fillColor, strokeColor, lineWidth = 1) {
