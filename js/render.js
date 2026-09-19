@@ -222,20 +222,17 @@ export class RenderEngine {
                 const bSpacing = r * 0.26; // Moves them slightly further apart to prevent intersection
 
                 this.ctx.strokeStyle = '#fff';
-                this.ctx.fillStyle = '#fff'; // Explicit white core fill
                 this.ctx.lineWidth = Math.max(2, r * 0.15);
                 this.ctx.lineCap = 'round';
 
                 // Left lens
                 this.ctx.beginPath();
                 this.ctx.arc(x - bSpacing, y, bRadius, 0, Math.PI * 2);
-                this.ctx.fill();
                 this.ctx.stroke();
 
                 // Right lens
                 this.ctx.beginPath();
                 this.ctx.arc(x + bSpacing, y, bRadius, 0, Math.PI * 2);
-                this.ctx.fill();
                 this.ctx.stroke();
             } else {
                 // Ensure text sizes dynamically scale exactly to the current render diameter
