@@ -389,20 +389,18 @@ export class UIManager {
 
         const rect = this.canvas.getBoundingClientRect();
 
-        // Estimate the maximum possible size of this menu when the deploy panel expands (~350px tall, ~270px wide).
-        const estMaxHeight = 350;
+        // Estimate the maximum possible size of this menu when the deploy panel expands (~450px tall, ~270px wide).
+        const estMaxHeight = 450;
         const estMaxWidth = 270;
 
         let localX = x - rect.left;
         let localY = y - rect.top;
 
         let safeX = localX > rect.width / 2 ? localX - estMaxWidth - 10 : localX + 10;
-        let safeY = localY + 10;
+        let safeY = localY > rect.height / 2 ? localY - estMaxHeight - 10 : localY + 10;
 
         if (safeX < 10) safeX = 10;
-        if (safeY + estMaxHeight > rect.height) {
-            safeY = Math.max(10, rect.height - estMaxHeight - 20);
-        }
+        if (safeY < 10) safeY = 10;
 
         this.contextMenu.style.left = `${safeX}px`;
         this.contextMenu.style.top = `${safeY}px`;
@@ -474,15 +472,13 @@ export class UIManager {
                 let localX = e.clientX - rect.left;
                 let localY = e.clientY - rect.top;
                 let estMaxWidth = 350;
-                let estMaxHeight = 350;
+                let estMaxHeight = 450;
 
                 let safeX = localX > rect.width / 2 ? localX - estMaxWidth - 10 : localX + 10;
-                let safeY = localY + 10;
+                let safeY = localY > rect.height / 2 ? localY - estMaxHeight - 10 : localY + 10;
 
                 if (safeX < 10) safeX = 10;
-                if (safeY + estMaxHeight > rect.height) {
-                    safeY = Math.max(10, rect.height - estMaxHeight - 20);
-                }
+                if (safeY < 10) safeY = 10;
 
                 this.contextMenu.style.left = `${safeX}px`;
                 this.contextMenu.style.top = `${safeY}px`;
@@ -642,15 +638,13 @@ export class UIManager {
                 let localX = e.clientX - rect.left;
                 let localY = e.clientY - rect.top;
                 let estMaxWidth = 350;
-                let estMaxHeight = 350;
+                let estMaxHeight = 450;
 
                 let safeX = localX > rect.width / 2 ? localX - estMaxWidth - 10 : localX + 10;
-                let safeY = localY + 10;
+                let safeY = localY > rect.height / 2 ? localY - estMaxHeight - 10 : localY + 10;
 
                 if (safeX < 10) safeX = 10;
-                if (safeY + estMaxHeight > rect.height) {
-                    safeY = Math.max(10, rect.height - estMaxHeight - 20);
-                }
+                if (safeY < 10) safeY = 10;
 
                 this.contextMenu.style.left = `${safeX}px`;
                 this.contextMenu.style.top = `${safeY}px`;
