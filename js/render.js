@@ -122,14 +122,18 @@ export class RenderEngine {
         }
     }
 
-    drawUnit(x, y, unit) {
+    drawUnit(x, y, col, row, unit) {
         // Obscure enemy if Hidden Mode
         let perspective = this.game.activeTeam;
         if (this.game.gameMode === 'ONLINE' || this.game.gameMode === 'AI') {
             perspective = this.game.localTeam;
         }
-        const isEnemy = unit.team !== perspective;
-        let hideStats = this.game.config.mode === 'HIDDEN' && isEnemy && this.game.winner === null;
+        let hideStats = this.game.getFogOfWar(col, row, perspective);
+
+        // Override if moving unit isn't physically on the tile during combat explosions
+        if (unit.exposedCounter && unit.exposedCounter > 0) {
+            hideStats = false;
+        }
 
         if (unit.exposedCounter && unit.exposedCounter > 0) {
             hideStats = false;
@@ -305,7 +309,7 @@ export class RenderEngine {
 
                 // Draw Unit
                 if (tile.unit && !tile.unit.isAnimating) {
-                    this.drawUnit(pt.x, pt.y, tile.unit);
+                    this.drawUnit(pt.x, pt.y, col, row, tile.unit);
                 }
             }
         }
@@ -353,7 +357,7 @@ export class RenderEngine {
             const lerpX = startPt.x + (endPt.x - startPt.x) * progress;
             const lerpY = startPt.y + (endPt.y - startPt.y) * progress;
 
-            this.drawUnit(lerpX, lerpY, a.unit);
+            this.drawUnit(lerpX, lerpY, a.eC, a.eR, a.unit);
 
             if (progress >= 1) {
                 if (a.physicalBoardTarget) {

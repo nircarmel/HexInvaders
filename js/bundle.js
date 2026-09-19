@@ -765,6 +765,40 @@ class HexGame {
         return true;
     }
 
+    getFogOfWar(col, row, perspective) {
+        if (this.config.mode === 'VISIBLE' || this.winner !== null) return false;
+
+        const tile = this.getTile(col, row);
+        if (!tile || !tile.unit) return false;
+
+        const isEnemy = tile.unit.team !== perspective;
+        if (!isEnemy) return false;
+
+        if (tile.unit.exposedCounter && tile.unit.exposedCounter > 0) return false;
+
+        if (this.config.mode === 'HIDDEN') return true;
+
+        if (this.config.mode === 'NEARBY') {
+            const maxRange = this.config.maxSpeed + 1;
+            const targetAxial = hexMath.offsetToAxial(col, row);
+
+            for (let c = 0; c < this.cols; c++) {
+                for (let r = 0; r < this.rows; r++) {
+                    const t = this.getTile(c, r);
+                    if (t.unit && t.unit.team === perspective) {
+                        const friendlyAxial = hexMath.offsetToAxial(c, r);
+                        if (hexMath.axialDistance(targetAxial, friendlyAxial) <= maxRange) {
+                            return false; // Found a friendly unit close enough
+                        }
+                    }
+                }
+            }
+            return true; // Unseen
+        }
+
+        return false;
+    }
+
     checkWinConditions() {
         if (this.winner) return;
 
@@ -1009,14 +1043,18 @@ class RenderEngine {
         }
     }
 
-    drawUnit(x, y, unit) {
+    drawUnit(x, y, col, row, unit) {
         // Obscure enemy if Hidden Mode
         let perspective = this.game.activeTeam;
         if (this.game.gameMode === 'ONLINE' || this.game.gameMode === 'AI') {
             perspective = this.game.localTeam;
         }
-        const isEnemy = unit.team !== perspective;
-        let hideStats = this.game.config.mode === 'HIDDEN' && isEnemy && this.game.winner === null;
+        let hideStats = this.game.getFogOfWar(col, row, perspective);
+
+        // Override if moving unit isn't physically on the tile during combat explosions
+        if (unit.exposedCounter && unit.exposedCounter > 0) {
+            hideStats = false;
+        }
 
         if (unit.exposedCounter && unit.exposedCounter > 0) {
             hideStats = false;
@@ -1192,7 +1230,7 @@ class RenderEngine {
 
                 // Draw Unit
                 if (tile.unit && !tile.unit.isAnimating) {
-                    this.drawUnit(pt.x, pt.y, tile.unit);
+                    this.drawUnit(pt.x, pt.y, col, row, tile.unit);
                 }
             }
         }
@@ -1240,7 +1278,7 @@ class RenderEngine {
             const lerpX = startPt.x + (endPt.x - startPt.x) * progress;
             const lerpY = startPt.y + (endPt.y - startPt.y) * progress;
 
-            this.drawUnit(lerpX, lerpY, a.unit);
+            this.drawUnit(lerpX, lerpY, a.eC, a.eR, a.unit);
 
             if (progress >= 1) {
                 if (a.physicalBoardTarget) {
@@ -1438,8 +1476,7 @@ class UIManager {
             if (this.game.gameMode === 'ONLINE' || this.game.gameMode === 'AI') {
                 perspective = this.game.localTeam;
             }
-            const isEnemy = tile.unit.team !== perspective;
-            let hideStats = this.game.config.mode === 'HIDDEN' && isEnemy && this.game.winner === null;
+            let hideStats = this.game.getFogOfWar(col, row, perspective);
 
             if (tile.unit.exposedCounter && tile.unit.exposedCounter > 0) {
                 hideStats = false;

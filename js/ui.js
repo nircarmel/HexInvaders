@@ -178,8 +178,7 @@ export class UIManager {
             if (this.game.gameMode === 'ONLINE' || this.game.gameMode === 'AI') {
                 perspective = this.game.localTeam;
             }
-            const isEnemy = tile.unit.team !== perspective;
-            let hideStats = this.game.config.mode === 'HIDDEN' && isEnemy && this.game.winner === null;
+            let hideStats = this.game.getFogOfWar(col, row, perspective);
 
             if (tile.unit.exposedCounter && tile.unit.exposedCounter > 0) {
                 hideStats = false;
