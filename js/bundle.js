@@ -1619,8 +1619,8 @@ class UIManager {
 
             const centerRow = (this.game.rows - 1) / 2;
 
-            // X placed offset from the clicked hex so it doesn't cover it, towards the center
-            let targetCol = this._contextTarget.col < this.game.cols / 2 ? this._contextTarget.col + 7.5 : this._contextTarget.col - 7.5;
+            const isBlue = this._contextTarget.col < this.game.cols / 2;
+            let targetCol = isBlue ? 1 : this.game.cols - 2;
 
             const pt = hexMath.hexToPixel(targetCol, centerRow, this.render.hexRadius);
 
@@ -1639,7 +1639,12 @@ class UIManager {
 
             this.contextMenu.style.left = cssX + 'px';
             this.contextMenu.style.top = cssY + 'px';
-            this.contextMenu.style.transform = 'translate(-50%, -50%)';
+
+            if (isBlue) {
+                this.contextMenu.style.transform = 'translate(0%, -50%)';
+            } else {
+                this.contextMenu.style.transform = 'translate(-100%, -50%)';
+            }
         }
     }
 
