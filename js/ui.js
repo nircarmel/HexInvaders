@@ -205,6 +205,19 @@ export class UIManager {
         if (this.unitTooltip) this.unitTooltip.classList.add('hidden');
     }
 
+    updateHUDTimer(timeRemaining) {
+        const timerDiv = document.getElementById('turn-timer');
+        if (!timerDiv) return;
+
+        if (this.game.timerDuration > 0) {
+            timerDiv.classList.remove('hidden');
+            timerDiv.style.color = timeRemaining <= 5 ? '#ef4444' : 'white';
+            timerDiv.innerText = `${timeRemaining}s`;
+        } else {
+            timerDiv.classList.add('hidden');
+        }
+    }
+
     updateHUD() {
         const bPanelTitle = document.querySelector('.team-panel.blue-team .team-title');
         const rPanelTitle = document.querySelector('.team-panel.red-team .team-title');

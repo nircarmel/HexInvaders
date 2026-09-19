@@ -44,8 +44,50 @@ export class HexGame {
         this.blueName = config.blueName || 'Blue';
         this.redName = config.redName || 'Red';
 
+        this.timerDuration = config.timerDuration || 0;
+        this.timeLeft = this.timerDuration;
+        this.timerInterval = null;
+
         this.logSystem(`Game initialized. ${this.blueName}'s Turn.`);
         this.saveSnapshot();
+
+        if (this.timerDuration > 0) {
+            this.startTimer();
+        }
+    }
+
+    startTimer() {
+        if (this.timerInterval) clearInterval(this.timerInterval);
+        this.timeLeft = this.timerDuration;
+
+        if (this.ui) this.ui.updateHUDTimer(this.timeLeft);
+
+        if (this.timerDuration > 0 && !this.winner) {
+            this.timerInterval = setInterval(() => {
+                if (this.winner) {
+                    clearInterval(this.timerInterval);
+                    return;
+                }
+                this.timeLeft--;
+                if (this.ui) this.ui.updateHUDTimer(this.timeLeft);
+
+                if (this.timeLeft <= 0) {
+                    clearInterval(this.timerInterval);
+                    let isActivePlayer = true;
+                    if (this.network && this.localTeam) {
+                        isActivePlayer = (this.localTeam === this.activeTeam);
+                    }
+                    if (this.gameMode === 'AI' && this.activeTeam === 'RED') {
+                        isActivePlayer = false; // AI handles its own execution
+                    }
+
+                    if (isActivePlayer) {
+                        this.logSystem(`Time expired! Turn skipped.`);
+                        this.endTurn();
+                    }
+                }
+            }, 1000);
+        }
     }
 
     saveSnapshot() {
@@ -185,6 +227,11 @@ export class HexGame {
         this.actionUsed = false;
         const currentName = this.activeTeam === 'BLUE' ? this.blueName : this.redName;
         this.logSystem(`${currentName}'s Turn.`);
+
+        if (this.timerDuration > 0) {
+            this.startTimer();
+        }
+
         return true;
     }
 

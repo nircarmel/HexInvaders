@@ -186,6 +186,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 barricadeCost: parseInt(document.getElementById('cfg-barricadeCost').value) || 5,
                 maxStrength: parseInt(document.getElementById('cfg-maxStrength').value) || 10,
                 maxSpeed: parseInt(document.getElementById('cfg-maxSpeed').value) || 5,
+                timerDuration: parseInt(document.querySelector('input[name="cfg-timer"]:checked') ? document.querySelector('input[name="cfg-timer"]:checked').value : '0'),
                 blueName: document.getElementById('player-name').value || 'Player 1',
                 redName: GLOBAL_MODE === 'AI' ? 'Bot' : 'Player 2'
             };

@@ -173,8 +173,50 @@ class HexGame {
         this.blueName = config.blueName || 'Blue';
         this.redName = config.redName || 'Red';
 
+        this.timerDuration = config.timerDuration || 0;
+        this.timeLeft = this.timerDuration;
+        this.timerInterval = null;
+
         this.logSystem(`Game initialized. ${this.blueName}'s Turn.`);
         this.saveSnapshot();
+
+        if (this.timerDuration > 0) {
+            this.startTimer();
+        }
+    }
+
+    startTimer() {
+        if (this.timerInterval) clearInterval(this.timerInterval);
+        this.timeLeft = this.timerDuration;
+
+        if (this.ui) this.ui.updateHUDTimer(this.timeLeft);
+
+        if (this.timerDuration > 0 && !this.winner) {
+            this.timerInterval = setInterval(() => {
+                if (this.winner) {
+                    clearInterval(this.timerInterval);
+                    return;
+                }
+                this.timeLeft--;
+                if (this.ui) this.ui.updateHUDTimer(this.timeLeft);
+
+                if (this.timeLeft <= 0) {
+                    clearInterval(this.timerInterval);
+                    let isActivePlayer = true;
+                    if (this.network && this.localTeam) {
+                        isActivePlayer = (this.localTeam === this.activeTeam);
+                    }
+                    if (this.gameMode === 'AI' && this.activeTeam === 'RED') {
+                        isActivePlayer = false; // AI handles its own execution
+                    }
+
+                    if (isActivePlayer) {
+                        this.logSystem(`Time expired! Turn skipped.`);
+                        this.endTurn();
+                    }
+                }
+            }, 1000);
+        }
     }
 
     saveSnapshot() {
@@ -314,6 +356,11 @@ class HexGame {
         this.actionUsed = false;
         const currentName = this.activeTeam === 'BLUE' ? this.blueName : this.redName;
         this.logSystem(`${currentName}'s Turn.`);
+
+        if (this.timerDuration > 0) {
+            this.startTimer();
+        }
+
         return true;
     }
 
@@ -1421,6 +1468,19 @@ class UIManager {
         if (this.unitTooltip) this.unitTooltip.classList.add('hidden');
     }
 
+    updateHUDTimer(timeRemaining) {
+        const timerDiv = document.getElementById('turn-timer');
+        if (!timerDiv) return;
+
+        if (this.game.timerDuration > 0) {
+            timerDiv.classList.remove('hidden');
+            timerDiv.style.color = timeRemaining <= 5 ? '#ef4444' : 'white';
+            timerDiv.innerText = `${timeRemaining}s`;
+        } else {
+            timerDiv.classList.add('hidden');
+        }
+    }
+
     updateHUD() {
         const bPanelTitle = document.querySelector('.team-panel.blue-team .team-title');
         const rPanelTitle = document.querySelector('.team-panel.red-team .team-title');
@@ -2389,6 +2449,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 barricadeCost: parseInt(document.getElementById('cfg-barricadeCost').value) || 5,
                 maxStrength: parseInt(document.getElementById('cfg-maxStrength').value) || 10,
                 maxSpeed: parseInt(document.getElementById('cfg-maxSpeed').value) || 5,
+                timerDuration: parseInt(document.querySelector('input[name="cfg-timer"]:checked') ? document.querySelector('input[name="cfg-timer"]:checked').value : '0'),
                 blueName: document.getElementById('player-name').value || 'Player 1',
                 redName: GLOBAL_MODE === 'AI' ? 'Bot' : 'Player 2'
             };
