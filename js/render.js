@@ -217,6 +217,10 @@ export class RenderEngine {
                 this.ctx.lineTo(x + fw / 2 + 2, y - ph / 2 + fh / 2);
                 this.ctx.lineTo(x - fw / 2 + 2, y - ph / 2 + fh);
                 this.ctx.fill();
+            } else if (unit.type === 'observation') {
+                const fontSize = r * 1.0;
+                this.ctx.font = `${fontSize}px Arial`;
+                this.ctx.fillText('🔭', x, y + r * 0.1);
             } else {
                 // Ensure text sizes dynamically scale exactly to the current render diameter
                 // Perfectly centered without dots

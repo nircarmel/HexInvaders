@@ -140,11 +140,19 @@ class Unit {
             this.strength = 0;
             this.speed = speed;
             this.isFlag = true;
+            this.isObservation = false;
             this.cost = flagCost * speed;
+        } else if (this.type === 'observation') {
+            this.strength = 0;
+            this.speed = 0;
+            this.isFlag = false;
+            this.isObservation = true;
+            this.cost = 0;
         } else {
             this.strength = strength;
             this.speed = speed;
             this.isFlag = false;
+            this.isObservation = false;
             this.cost = strength * speed;
         }
 
@@ -779,10 +787,26 @@ class HexGame {
         // Kill unit
         t.unit = null;
         // Paint black
+        let previewKeys = new Set();
         for (let pt of footprint) {
             if (this.isValid(pt.col, pt.row)) {
                 this.getTile(pt.col, pt.row).isBarricade = true;
+                previewKeys.add(`${pt.col},${pt.row}`);
             }
+        }
+
+        // Spawn Observation Unit
+        let obsCol = this.activeTeam === 'BLUE' ? col + 1 : col - 1;
+        let obsRow = row;
+        // Slide outward towards enemy bounds until free tile found
+        while (previewKeys.has(`${obsCol},${obsRow}`) || (this.isValid(obsCol, obsRow) && this.getTile(obsCol, obsRow).unit !== null)) {
+            obsCol += (this.activeTeam === 'BLUE' ? 1 : -1);
+            if (!this.isValid(obsCol, obsRow)) break;
+        }
+
+        if (this.isValid(obsCol, obsRow)) {
+            const obsUnit = new Unit(this.activeTeam, 'observation', 0, 0, 0);
+            this.setUnit(obsCol, obsRow, obsUnit);
         }
 
         this.logAction(this.activeTeam, `Constructed a vertical barricade at [${col},${row}].`);
@@ -807,13 +831,16 @@ class HexGame {
         if (this.config.mode === 'HIDDEN') return true;
 
         if (this.config.mode === 'NEARBY') {
-            const maxRange = this.config.maxSpeed + 1;
-
             for (let c = 0; c < this.cols; c++) {
                 for (let r = 0; r < this.rows; r++) {
                     const t = this.getTile(c, r);
                     if (t.unit && t.unit.team === perspective) {
-                        if (hexMath.offsetDistance(col, row, c, r) <= maxRange) {
+                        let viewRange = this.config.maxSpeed + 1;
+                        if (t.unit.type === 'observation') {
+                            viewRange = this.config.maxSpeed * 2;
+                        }
+
+                        if (hexMath.offsetDistance(col, row, c, r) <= viewRange) {
                             return false; // Found a friendly unit close enough
                         }
                     }
@@ -1281,6 +1308,10 @@ class RenderEngine {
                 this.ctx.lineTo(x + fw / 2 + 2, y - ph / 2 + fh / 2);
                 this.ctx.lineTo(x - fw / 2 + 2, y - ph / 2 + fh);
                 this.ctx.fill();
+            } else if (unit.type === 'observation') {
+                const fontSize = r * 1.0;
+                this.ctx.font = `${fontSize}px Arial`;
+                this.ctx.fillText('🔭', x, y + r * 0.1);
             } else {
                 // Ensure text sizes dynamically scale exactly to the current render diameter
                 // Perfectly centered without dots

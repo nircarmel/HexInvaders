@@ -622,10 +622,26 @@ export class HexGame {
         // Kill unit
         t.unit = null;
         // Paint black
+        let previewKeys = new Set();
         for (let pt of footprint) {
             if (this.isValid(pt.col, pt.row)) {
                 this.getTile(pt.col, pt.row).isBarricade = true;
+                previewKeys.add(`${pt.col},${pt.row}`);
             }
+        }
+
+        // Spawn Observation Unit
+        let obsCol = this.activeTeam === 'BLUE' ? col + 1 : col - 1;
+        let obsRow = row;
+        // Slide outward towards enemy bounds until free tile found
+        while (previewKeys.has(`${obsCol},${obsRow}`) || (this.isValid(obsCol, obsRow) && this.getTile(obsCol, obsRow).unit !== null)) {
+            obsCol += (this.activeTeam === 'BLUE' ? 1 : -1);
+            if (!this.isValid(obsCol, obsRow)) break;
+        }
+
+        if (this.isValid(obsCol, obsRow)) {
+            const obsUnit = new Unit(this.activeTeam, 'observation', 0, 0, 0);
+            this.setUnit(obsCol, obsRow, obsUnit);
         }
 
         this.logAction(this.activeTeam, `Constructed a vertical barricade at [${col},${row}].`);
@@ -650,13 +666,16 @@ export class HexGame {
         if (this.config.mode === 'HIDDEN') return true;
 
         if (this.config.mode === 'NEARBY') {
-            const maxRange = this.config.maxSpeed + 1;
-
             for (let c = 0; c < this.cols; c++) {
                 for (let r = 0; r < this.rows; r++) {
                     const t = this.getTile(c, r);
                     if (t.unit && t.unit.team === perspective) {
-                        if (hexMath.offsetDistance(col, row, c, r) <= maxRange) {
+                        let viewRange = this.config.maxSpeed + 1;
+                        if (t.unit.type === 'observation') {
+                            viewRange = this.config.maxSpeed * 2;
+                        }
+
+                        if (hexMath.offsetDistance(col, row, c, r) <= viewRange) {
                             return false; // Found a friendly unit close enough
                         }
                     }
