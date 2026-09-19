@@ -1,4 +1,6 @@
 // js/ui.js
+import { hexMath } from './hex.js';
+
 export class UIManager {
     constructor(game, render, input) {
         this.game = game;
@@ -217,25 +219,29 @@ export class UIManager {
 
     updatePopupTracking() {
         if (!this.contextMenu.classList.contains('hidden') && this._contextTarget) {
-            const pt = hexMath.offsetToPixel(this._contextTarget.col, this._contextTarget.row, this.render.hexRadius);
+            const isDeploy = !this.contextDeployPanel.classList.contains('hidden');
+            if (!isDeploy) return;
+
+            const centerCol = (this.game.cols - 1) / 2;
+            const centerRow = (this.game.rows - 1) / 2;
+
+            const pt = hexMath.hexToPixel(centerCol, centerRow, this.render.hexRadius);
 
             // Apply camera offsets
             const screenX = pt.x * this.render.camera.zoom + this.render.camera.x;
             const screenY = pt.y * this.render.camera.zoom + this.render.camera.y;
 
-            const rect = this.canvas.getBoundingClientRect();
-            // Evaluate live DOM bounds directly, discarding static estimates natively
-            const actualWidth = this.contextMenu.offsetWidth || 300;
-            const actualHeight = this.contextMenu.offsetHeight || 400;
+            const canvas = document.getElementById('gameCanvas');
+            const rect = canvas.getBoundingClientRect();
 
-            const scaleX = rect.width / this.canvas.width;
-            const scaleY = rect.height / this.canvas.height;
+            const scaleX = rect.width / canvas.width;
+            const scaleY = rect.height / canvas.height;
 
             let cssX = screenX * scaleX;
             let cssY = screenY * scaleY;
 
-            this.contextMenu.style.left = '50%';
-            this.contextMenu.style.top = '50%';
+            this.contextMenu.style.left = cssX + 'px';
+            this.contextMenu.style.top = cssY + 'px';
             this.contextMenu.style.transform = 'translate(-50%, -50%)';
         }
     }
@@ -429,6 +435,7 @@ export class UIManager {
 
         this.contextMenu.style.left = `${safeX}px`;
         this.contextMenu.style.top = `${safeY}px`;
+        this.contextMenu.style.transform = 'none';
     }
 
     resetActiveState() {

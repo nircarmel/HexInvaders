@@ -44,6 +44,10 @@ export class RenderEngine {
         this.centerCamera();
     }
 
+    requestRender() {
+        // Continuous drawing loop handles this now, leaving here to avoid crashes from legacy calls
+    }
+
     addExplosion(col, row) {
         const img = document.createElement('img');
         img.src = 'boom.gif?' + Date.now(); // Cache bust to force animation restart from frame 0
