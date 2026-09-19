@@ -331,9 +331,15 @@ export class UIManager {
 
         const goalText = document.getElementById('help-goal-text');
         if (goalText && this.game.config) {
-            goalText.innerText = this.game.config.type === 'PLANT' ?
+            const isPlant = this.game.config.type === 'PLANT';
+            goalText.innerText = isPlant ?
                 "Be the first player to move a Flag Unit into the enemy base." :
                 "Be the first player to move a unit into the enemy base.";
+
+            const flagSection = document.getElementById('help-section-flag');
+            if (flagSection) {
+                flagSection.style.display = isPlant ? 'block' : 'none';
+            }
         }
 
         const bluePanel = document.querySelector('.team-panel.blue-team');
