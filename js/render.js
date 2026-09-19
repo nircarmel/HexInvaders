@@ -139,6 +139,14 @@ export class RenderEngine {
         if (this.game.gameMode === 'ONLINE' || this.game.gameMode === 'AI') {
             perspective = this.game.localTeam;
         }
+
+        // Line of Sight Mechanic Check
+        // Totally skip rendering enemy if they are completely hidden by barricades
+        if (unit.team !== perspective) {
+            if (!this.game.canSeeUnit(col, row, perspective)) {
+                return; // Skip rendering entirely
+            }
+        }
         let hideStats = this.game.getFogOfWar(col, row, perspective);
 
         // Override if moving unit isn't physically on the tile during combat explosions

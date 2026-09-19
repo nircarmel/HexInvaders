@@ -190,6 +190,13 @@ export class UIManager {
             if (this.game.gameMode === 'ONLINE' || this.game.gameMode === 'AI') {
                 perspective = this.game.localTeam;
             }
+
+            // Absolutely hide completely if blocked by barricade line-of-sight
+            if (tile.unit.team !== perspective && !this.game.canSeeUnit(col, row, perspective)) {
+                if (this.unitTooltip) this.unitTooltip.classList.add('hidden');
+                return;
+            }
+
             let hideStats = this.game.getFogOfWar(col, row, perspective);
 
             if (tile.unit.exposedCounter && tile.unit.exposedCounter > 0) {

@@ -40,25 +40,25 @@ const hexMath = {
     pixelToHex(x, y, hexRadius, offsetX = 0, offsetY = 0) {
         const px = x - offsetX;
         const py = y - offsetY;
-        
+
         // Approximate axial coords for flat topped hexes
-        const q = (2/3 * px) / hexRadius;
-        const r = (-1/3 * px + Math.sqrt(3)/3 * py) / hexRadius;
-        
+        const q = (2 / 3 * px) / hexRadius;
+        const r = (-1 / 3 * px + Math.sqrt(3) / 3 * py) / hexRadius;
+
         return this.hexRound(q, r);
     },
-    
+
     // Convert float axial space to rounded axial integer
     hexRound(q, r) {
         let s = -q - r;
         let rq = Math.round(q);
         let rr = Math.round(r);
         let rs = Math.round(s);
-        
+
         const q_diff = Math.abs(rq - q);
         const r_diff = Math.abs(rr - r);
         const s_diff = Math.abs(rs - s);
-        
+
         if (q_diff > r_diff && q_diff > s_diff) {
             rq = -rr - rs;
         } else if (r_diff > s_diff) {
@@ -66,25 +66,53 @@ const hexMath = {
         } else {
             rs = -rq - rr;
         }
-        
+
         return { q: rq, r: rr };
     },
-    
+
     // Pixel to closest board offset coords (col, row)
     pixelToOffset(x, y, hexRadius, offsetX = 0, offsetY = 0) {
         const ax = this.pixelToHex(x, y, hexRadius, offsetX, offsetY);
         return this.axialToOffset(ax.q, ax.r);
     },
-    
+
+    // Interpolation for Line of Sight
+    hexLerp(a, b, t) {
+        return {
+            q: a.q + (b.q - a.q) * t,
+            r: a.r + (b.r - a.r) * t
+        };
+    },
+
+    // Generate an array of offset (col, row) tiles that intersect a straight line between two offset coords
+    hexLine(col1, row1, col2, row2) {
+        const a = this.offsetToAxial(col1, row1);
+        const b = this.offsetToAxial(col2, row2);
+        const dist = this.axialDistance(a.q, a.r, b.q, b.r);
+        const results = [];
+
+        // Epsilon nudges prevent exact edge/corner intersections returning unpredictable lines
+        const nudgeA = { q: a.q + 1e-6, r: a.r + 2e-6 };
+        const nudgeB = { q: b.q + 1e-6, r: b.r + 2e-6 };
+
+        for (let i = 0; i <= dist; i++) {
+            const t = dist === 0 ? 0.0 : i / dist;
+            const lerped = this.hexLerp(nudgeA, nudgeB, t);
+            const rounded = this.hexRound(lerped.q, lerped.r);
+            results.push(this.axialToOffset(rounded.q, rounded.r));
+        }
+        return results;
+    },
+
     // Get adjacent hexes (Axial coords)
     // Flat-topped directions: right, bottom-right, bottom-left, left, top-left, top-right
     hexDirections: [
-        {dq: 1, dr: 0},
-        {dq: 1, dr: -1},
-        {dq: 0, dr: -1},
-        {dq: -1, dr: 0},
-        {dq: -1, dr: 1},
-        {dq: 0, dr: 1}
+        { dq: 1, dr: 0 },
+        { dq: 1, dr: -1 },
+        { dq: 0, dr: -1 },
+        { dq: -1, dr: 0 },
+        { dq: -1, dr: 1 },
+        { dq: 0, dr: 1 }
     ],
 
     // Return the radius array of offsets covering N steps
@@ -797,6 +825,45 @@ class HexGame {
         return false;
     }
 
+    canSeeUnit(targetCol, targetRow, perspectiveTeam) {
+        // Collect all units for the perspective team
+        const myUnits = [];
+        for (let col = 0; col < this.cols; col++) {
+            for (let row = 0; row < this.rows; row++) {
+                const t = this.getTile(col, row);
+                if (t.unit && t.unit.team === perspectiveTeam) {
+                    myUnits.push({ col, row });
+                }
+            }
+        }
+
+        // If player has no units, sees none
+        if (myUnits.length === 0) return false;
+
+        // Iterate through friendly units to check if ANY have unobstructed LOS to target
+        for (let u of myUnits) {
+            const line = hexMath.hexLine(u.col, u.row, targetCol, targetRow);
+            let blocked = false;
+
+            // Check intermediate steps exclusively (skip 0 which is source, skip length-1 which is target)
+            for (let i = 1; i < line.length - 1; i++) {
+                const step = line[i];
+                if (this.isValid(step.col, step.row)) {
+                    const stepTile = this.getTile(step.col, step.row);
+                    if (stepTile.isBarricade) {
+                        blocked = true;
+                        break;
+                    }
+                }
+            }
+            if (!blocked) {
+                return true; // Fast exit if we establish line of sight from at least one unit
+            }
+        }
+
+        return false;
+    }
+
     checkWinConditions() {
         if (this.winner) return;
 
@@ -1135,6 +1202,14 @@ class RenderEngine {
         let perspective = this.game.activeTeam;
         if (this.game.gameMode === 'ONLINE' || this.game.gameMode === 'AI') {
             perspective = this.game.localTeam;
+        }
+
+        // Line of Sight Mechanic Check
+        // Totally skip rendering enemy if they are completely hidden by barricades
+        if (unit.team !== perspective) {
+            if (!this.game.canSeeUnit(col, row, perspective)) {
+                return; // Skip rendering entirely
+            }
         }
         let hideStats = this.game.getFogOfWar(col, row, perspective);
 
@@ -1595,6 +1670,13 @@ class UIManager {
             if (this.game.gameMode === 'ONLINE' || this.game.gameMode === 'AI') {
                 perspective = this.game.localTeam;
             }
+
+            // Absolutely hide completely if blocked by barricade line-of-sight
+            if (tile.unit.team !== perspective && !this.game.canSeeUnit(col, row, perspective)) {
+                if (this.unitTooltip) this.unitTooltip.classList.add('hidden');
+                return;
+            }
+
             let hideStats = this.game.getFogOfWar(col, row, perspective);
 
             if (tile.unit.exposedCounter && tile.unit.exposedCounter > 0) {

@@ -668,6 +668,45 @@ export class HexGame {
         return false;
     }
 
+    canSeeUnit(targetCol, targetRow, perspectiveTeam) {
+        // Collect all units for the perspective team
+        const myUnits = [];
+        for (let col = 0; col < this.cols; col++) {
+            for (let row = 0; row < this.rows; row++) {
+                const t = this.getTile(col, row);
+                if (t.unit && t.unit.team === perspectiveTeam) {
+                    myUnits.push({ col, row });
+                }
+            }
+        }
+
+        // If player has no units, sees none
+        if (myUnits.length === 0) return false;
+
+        // Iterate through friendly units to check if ANY have unobstructed LOS to target
+        for (let u of myUnits) {
+            const line = hexMath.hexLine(u.col, u.row, targetCol, targetRow);
+            let blocked = false;
+
+            // Check intermediate steps exclusively (skip 0 which is source, skip length-1 which is target)
+            for (let i = 1; i < line.length - 1; i++) {
+                const step = line[i];
+                if (this.isValid(step.col, step.row)) {
+                    const stepTile = this.getTile(step.col, step.row);
+                    if (stepTile.isBarricade) {
+                        blocked = true;
+                        break;
+                    }
+                }
+            }
+            if (!blocked) {
+                return true; // Fast exit if we establish line of sight from at least one unit
+            }
+        }
+
+        return false;
+    }
+
     checkWinConditions() {
         if (this.winner) return;
 
