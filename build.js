@@ -10,6 +10,7 @@ for (const f of ['hex.js', 'unit.js', 'game.js', 'input.js', 'render.js', 'ui.js
 }
 fs.writeFileSync('js/bundle.js', combined);
 let html = fs.readFileSync('index.html', 'utf8');
-html = html.replace('<script type="module" src="js/main.js"></script>', '<script src="js/bundle.js"></script>');
+html = html.replace(/<script src="js\/bundle\.js[^"]*"><\/script>/, `<script src="js/bundle.js?v=${Date.now()}"></script>`);
+html = html.replace('<script type="module" src="js/main.js"></script>', `<script src="js/bundle.js?v=${Date.now()}"></script>`);
 fs.writeFileSync('index.html', html);
 console.log("Bundled successfully!");
