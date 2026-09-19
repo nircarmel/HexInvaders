@@ -224,10 +224,9 @@ export class UIManager {
             const screenY = pt.y * this.render.camera.zoom + this.render.camera.y;
 
             const rect = this.canvas.getBoundingClientRect();
-            // Estimate max height/width dependent on deploy visibility
-            const isDeploy = !this.contextDeployPanel.classList.contains('hidden');
-            const estMaxWidth = isDeploy ? 350 : 270;
-            const estMaxHeight = isDeploy ? 450 : 250;
+            // Evaluate live DOM bounds directly, discarding static estimates natively
+            const actualWidth = this.contextMenu.offsetWidth || 300;
+            const actualHeight = this.contextMenu.offsetHeight || 400;
 
             const scaleX = rect.width / this.canvas.width;
             const scaleY = rect.height / this.canvas.height;
@@ -235,14 +234,18 @@ export class UIManager {
             let cssX = screenX * scaleX;
             let cssY = screenY * scaleY;
 
-            let safeX = cssX > rect.width / 2 ? cssX - estMaxWidth - 10 : cssX + 10;
-            let safeY = cssY > rect.height / 2 ? cssY - estMaxHeight - 10 : cssY + 10;
+            // Anchor logic sequentially requested by user bounding mechanics:
+            // Right-side triggers push menus negatively to align the right-edge perfectly on nodes
+            let targetLeft = cssX > rect.width / 2 ? cssX - actualWidth : cssX;
+            // Vertically center exactly over the node cleanly
+            let targetTop = cssY - (actualHeight / 2);
 
-            if (safeX < 10) safeX = 10;
-            if (safeY < 10) safeY = 10;
+            // Confine bounds securely to prevent clipping inside the container organically
+            targetLeft = Math.max(10, Math.min(targetLeft, rect.width - actualWidth - 10));
+            targetTop = Math.max(10, Math.min(targetTop, rect.height - actualHeight - 10));
 
-            this.contextMenu.style.left = `${safeX}px`;
-            this.contextMenu.style.top = `${safeY}px`;
+            this.contextMenu.style.left = `${targetLeft}px`;
+            this.contextMenu.style.top = `${targetTop}px`;
         }
     }
 

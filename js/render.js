@@ -216,6 +216,12 @@ export class RenderEngine {
     }
 
     drawLoop() {
+        // Auto-correct any flexbox asynchronous geometry updates stretching CSS
+        const boardFrame = document.getElementById('board-frame');
+        if (boardFrame && (this.canvas.width !== boardFrame.clientWidth || this.canvas.height !== boardFrame.clientHeight)) {
+            this.resize();
+        }
+
         // Clear screen
         this.ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg-dark') || '#090a0f';
         this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
