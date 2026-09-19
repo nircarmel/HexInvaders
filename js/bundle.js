@@ -1581,10 +1581,17 @@ class UIManager {
             document.getElementById('info-power').innerText = this.game.config.powerMode === 'DEPLETING' ? 'Depleting' : 'Constant';
         }
 
-        const bPanelTitle = document.querySelector('.team-panel.blue-team .team-title');
-        const rPanelTitle = document.querySelector('.team-panel.red-team .team-title');
-        if (bPanelTitle) bPanelTitle.innerHTML = `${this.game.blueName} Cr: <span id="blue-credits">${this.game.credits['BLUE']}</span>`;
-        if (rPanelTitle) rPanelTitle.innerHTML = `${this.game.redName} Cr: <span id="red-credits">${this.game.credits['RED']}</span>`;
+        const bNamePlate = document.getElementById('blue-name-plate');
+        if (bNamePlate) {
+            bNamePlate.innerText = this.game.blueName;
+            bNamePlate.style.fontSize = this.game.blueName.length > 10 ? '1.1rem' : '1.5rem';
+        }
+
+        const rNamePlate = document.getElementById('red-name-plate');
+        if (rNamePlate) {
+            rNamePlate.innerText = this.game.redName;
+            rNamePlate.style.fontSize = this.game.redName.length > 10 ? '1.1rem' : '1.5rem';
+        }
 
         const bCredits = document.getElementById('blue-credits');
         const rCredits = document.getElementById('red-credits');
