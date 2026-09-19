@@ -215,18 +215,19 @@ export class UIManager {
         const osc = this.audioCtx.createOscillator();
         const gain = this.audioCtx.createGain();
 
-        osc.type = 'triangle';
-        osc.frequency.setValueAtTime(800, this.audioCtx.currentTime);
-        osc.frequency.exponentialRampToValueAtTime(100, this.audioCtx.currentTime + 0.1);
+        // Mechanical tick simulation
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(1000, this.audioCtx.currentTime);
 
+        // Extremely short attack and decay (20ms)
         gain.gain.setValueAtTime(0.5, this.audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.01, this.audioCtx.currentTime + 0.1);
+        gain.gain.exponentialRampToValueAtTime(0.001, this.audioCtx.currentTime + 0.02);
 
         osc.connect(gain);
         gain.connect(this.audioCtx.destination);
 
         osc.start();
-        osc.stop(this.audioCtx.currentTime + 0.1);
+        osc.stop(this.audioCtx.currentTime + 0.03);
     }
 
     updateHUDTimer(timeRemaining) {
