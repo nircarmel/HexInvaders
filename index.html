@@ -166,18 +166,32 @@
                     <!-- Interactive Help Panel floating -->
                     <div id="help-panel" class="glass-panel hidden"
                         style="position: absolute; bottom: 20px; left: 20px; z-index: 60; width: 340px; padding: 15px; font-size: 0.85rem; line-height: 1.4; color: #eee; pointer-events: none;">
-                        <h3 style="margin-top:0; color:#60a5fa; margin-bottom: 5px;">Goal:</h3>
-                        <p id="help-goal-text" style="margin: 0 0 10px 0;">The goal of the game, based on the game type
-                            we are playing</p>
-                        <h3 style="color:#fcd34d; margin-bottom: 5px;">Summon a unit:</h3>
-                        <p style="margin: 0 0 10px 0;">Click on your player zone.</p>
-                        <h3 style="color:#34d399; margin-bottom: 5px;">Move a unit:</h3>
-                        <p style="margin: 0 0 10px 0;">Left click on a unit tile and then click on the destination tile.
-                        </p>
-                        <h3 style="color:#f87171; margin-bottom: 5px;">Create a barricade:</h3>
-                        <p style="margin: 0;">Right-click on a unit to convert it into a barricade, and scroll up/down
-                            to position it.<br><span style="color:#aaa;">Note: barricade size derives from the unit's
-                                power.</span></p>
+                        <h2
+                            style="margin-top:0; color:#fff; margin-bottom: 10px; font-size: 1.2rem; font-weight: bold;">
+                            How to Play</h2>
+
+                        <h3 style="color:#60a5fa; margin-bottom: 5px; font-size: 1rem; font-weight: bold;">🎯 Goal</h3>
+                        <p id="help-goal-text" style="margin: 0 0 10px 0;"></p>
+
+                        <h3 style="color:#fcd34d; margin-bottom: 5px; font-size: 1rem; font-weight: bold;">⚔️ Deploy a
+                            Combat Unit</h3>
+                        <p style="margin: 0 0 10px 0;">Left-click an empty tile in your base.<br><br>Choose the unit's
+                            Speed and Power, then deploy.</p>
+
+                        <h3 style="color:#a78bfa; margin-bottom: 5px; font-size: 1rem; font-weight: bold;">🚩 Deploy a
+                            Flag Unit</h3>
+                        <p style="margin: 0 0 10px 0; color: #bbb;"><i>Plant Flag mode only</i><br><br><span
+                                style="color:#eee">Right-click an empty tile in your base.<br><br>Choose the unit's
+                                Speed, then deploy.</span></p>
+
+                        <h3 style="color:#34d399; margin-bottom: 5px; font-size: 1rem; font-weight: bold;">➡️ Move a
+                            Unit</h3>
+                        <p style="margin: 0 0 10px 0;">Left-click a unit, then click its destination.</p>
+
+                        <h3 style="color:#f87171; margin-bottom: 5px; font-size: 1rem; font-weight: bold;">🧱 Build a
+                            Barricade</h3>
+                        <p style="margin: 0;">Right-click a unit to turn it into a Barricade.<br><br>Use the mouse wheel
+                            to scroll through available barricade locations.</p>
                     </div>
 
                     <!-- Contextual Popup Menu -->
@@ -273,6 +287,11 @@
                                 &gt;</button>
                         </div>
                     </div>
+                </div>
+
+                <div style="flex: 1; text-align: center; color: #888; font-size: 0.75rem; line-height: 1.4;">
+                    Left Click &rarr; Deploy Combat Unit / Move Unit<br>
+                    Right Click &rarr; Deploy Flag Unit / Barricade
                 </div>
 
                 <!-- Bottom Right Action Controls -->
@@ -448,7 +467,7 @@
     </div>
     </div>
 
-    <script src="js/bundle.js?v=1789851422922"></script>
+    <script src="js/bundle.js?v=1789852781800"></script>
 </body>
 
 </html>

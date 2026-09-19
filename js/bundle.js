@@ -1727,8 +1727,8 @@ class UIManager {
         const goalText = document.getElementById('help-goal-text');
         if (goalText && this.game.config) {
             goalText.innerText = this.game.config.type === 'PLANT' ?
-                "Deploy a Flag and carry it into the absolute opposite end of the board." :
-                "Move any friendly unit into the absolute opposite end of the board.";
+                "Be the first player to move a Flag Unit into the enemy base." :
+                "Be the first player to move a unit into the enemy base.";
         }
 
         const bluePanel = document.querySelector('.team-panel.blue-team');
