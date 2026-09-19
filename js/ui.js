@@ -204,9 +204,10 @@ export class UIManager {
                 document.getElementById('tt-spd').innerText = tile.unit.speed;
                 this.unitTooltip.classList.remove('hidden');
 
-                // Position above the mouse pointer
-                this.unitTooltip.style.left = `${e.clientX}px`;
-                this.unitTooltip.style.top = `${e.clientY - 20}px`;
+                // Position relative to local canvas bounds
+                const rect = this.canvas.getBoundingClientRect();
+                this.unitTooltip.style.left = `${e.clientX - rect.left}px`;
+                this.unitTooltip.style.top = `${e.clientY - rect.top - 20}px`;
                 return;
             }
         }
@@ -386,18 +387,20 @@ export class UIManager {
 
         this.contextMenu.classList.remove('hidden');
 
+        const rect = this.canvas.getBoundingClientRect();
+
         // Estimate the maximum possible size of this menu when the deploy panel expands (~350px tall, ~270px wide).
         const estMaxHeight = 350;
         const estMaxWidth = 270;
 
-        let safeX = x + 10;
-        let safeY = y + 10;
+        let safeX = x - rect.left + 10;
+        let safeY = y - rect.top + 10;
 
-        if (safeX + estMaxWidth > window.innerWidth) {
-            safeX = Math.max(10, window.innerWidth - estMaxWidth - 20);
+        if (safeX + estMaxWidth > rect.width) {
+            safeX = Math.max(10, rect.width - estMaxWidth - 20);
         }
-        if (safeY + estMaxHeight > window.innerHeight) {
-            safeY = Math.max(10, window.innerHeight - estMaxHeight - 20);
+        if (safeY + estMaxHeight > rect.height) {
+            safeY = Math.max(10, rect.height - estMaxHeight - 20);
         }
 
         this.contextMenu.style.left = `${safeX}px`;
@@ -466,16 +469,17 @@ export class UIManager {
 
                 this.contextMenu.classList.remove('hidden');
 
-                let safeX = e.clientX + 10;
-                let safeY = e.clientY + 10;
+                const rect = this.canvas.getBoundingClientRect();
+                let safeX = e.clientX - rect.left + 10;
+                let safeY = e.clientY - rect.top + 10;
                 let estMaxWidth = 350;
                 let estMaxHeight = 350;
 
-                if (safeX + estMaxWidth > window.innerWidth) {
-                    safeX = Math.max(10, window.innerWidth - estMaxWidth - 20);
+                if (safeX + estMaxWidth > rect.width) {
+                    safeX = Math.max(10, rect.width - estMaxWidth - 20);
                 }
-                if (safeY + estMaxHeight > window.innerHeight) {
-                    safeY = Math.max(10, window.innerHeight - estMaxHeight - 20);
+                if (safeY + estMaxHeight > rect.height) {
+                    safeY = Math.max(10, rect.height - estMaxHeight - 20);
                 }
 
                 this.contextMenu.style.left = `${safeX}px`;
@@ -632,16 +636,17 @@ export class UIManager {
                 this._contextTarget = { col, row };
                 this.contextMenu.classList.remove('hidden');
 
-                let safeX = e.clientX + 10;
-                let safeY = e.clientY + 10;
+                const rect = this.canvas.getBoundingClientRect();
+                let safeX = e.clientX - rect.left + 10;
+                let safeY = e.clientY - rect.top + 10;
                 let estMaxWidth = 350;
                 let estMaxHeight = 350;
 
-                if (safeX + estMaxWidth > window.innerWidth) {
-                    safeX = Math.max(10, window.innerWidth - estMaxWidth - 20);
+                if (safeX + estMaxWidth > rect.width) {
+                    safeX = Math.max(10, rect.width - estMaxWidth - 20);
                 }
-                if (safeY + estMaxHeight > window.innerHeight) {
-                    safeY = Math.max(10, window.innerHeight - estMaxHeight - 20);
+                if (safeY + estMaxHeight > rect.height) {
+                    safeY = Math.max(10, rect.height - estMaxHeight - 20);
                 }
 
                 this.contextMenu.style.left = `${safeX}px`;
