@@ -885,6 +885,7 @@ class HexGame {
             let viewRange = this.config.maxSpeed + 2;
             let targetDist = hexMath.offsetDistance(u.col, u.row, targetCol, targetRow);
 
+            let barricadesBypassed = 0;
             // Check intermediate steps exclusively (skip 0 which is source, skip length-1 which is target)
             for (let i = 1; i < line.length - 1; i++) {
                 const step = line[i];
@@ -892,8 +893,9 @@ class HexGame {
                     const stepTile = this.getTile(step.col, step.row);
                     if (stepTile.isBarricade) {
                         let barricadeDist = hexMath.offsetDistance(u.col, u.row, step.col, step.row);
-                        if (u.type === 'observation' && barricadeDist <= viewRange) {
-                            continue; // Bypasses barricades securely within local radius constraints
+                        if (u.type === 'observation' && barricadeDist <= viewRange && barricadesBypassed < 1) {
+                            barricadesBypassed++;
+                            continue; // Bypasses the first barricade securely within local radius constraints
                         }
                         blocked = true;
                         break;
@@ -942,6 +944,7 @@ class HexGame {
                 const line = hexMath.hexLine(col, row, c, r);
                 let targetDist = hexMath.offsetDistance(col, row, c, r);
                 let blocked = false;
+                let barricadesBypassed = 0;
                 // Exclude last tile in the loop since we want to see what is ON it even if barricade
                 for (let i = 0; i < line.length - 1; i++) {
                     const stepCol = line[i].col;
@@ -949,7 +952,8 @@ class HexGame {
                     if (this.isValid(stepCol, stepRow)) {
                         if (this.getTile(stepCol, stepRow).isBarricade) {
                             let barricadeDist = hexMath.offsetDistance(col, row, stepCol, stepRow);
-                            if (isObservation && barricadeDist <= viewRange) {
+                            if (isObservation && barricadeDist <= viewRange && barricadesBypassed < 1) {
+                                barricadesBypassed++;
                                 continue;
                             }
                             blocked = true;
