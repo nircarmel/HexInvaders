@@ -221,6 +221,10 @@ class HexGame {
         // Timers in network games will be started manually upon connection
     }
 
+    get isGameOver() {
+        return this.history.length > 0 && this.history[this.history.length - 1].winner !== null;
+    }
+
     startTimer() {
         if (this.timerInterval) clearInterval(this.timerInterval);
         this.timeLeft = this.timerDuration;
@@ -824,7 +828,7 @@ class HexGame {
     }
 
     getFogOfWar(col, row, perspective) {
-        if (this.config.mode === 'VISIBLE' || this.winner !== null) return false;
+        if (this.config.mode === 'VISIBLE' || this.isGameOver) return false;
 
         const tile = this.getTile(col, row);
         if (!tile || !tile.unit) return false;
@@ -858,6 +862,8 @@ class HexGame {
     }
 
     canSeeUnit(targetCol, targetRow, perspectiveTeam) {
+        if (this.isGameOver) return true;
+
         // Collect all units for the perspective team
         const myUnits = [];
         for (let col = 0; col < this.cols; col++) {
