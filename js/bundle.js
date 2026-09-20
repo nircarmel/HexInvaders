@@ -885,20 +885,26 @@ class HexGame {
             let viewRange = this.config.maxSpeed + 2;
             let targetDist = hexMath.offsetDistance(u.col, u.row, targetCol, targetRow);
 
-            let barricadesBypassed = 0;
+            let barricadeGroupsBypassed = 0;
+            let currentlyInBarricade = false;
             // Check intermediate steps exclusively (skip 0 which is source, skip length-1 which is target)
             for (let i = 1; i < line.length - 1; i++) {
                 const step = line[i];
                 if (this.isValid(step.col, step.row)) {
                     const stepTile = this.getTile(step.col, step.row);
                     if (stepTile.isBarricade) {
-                        let barricadeDist = hexMath.offsetDistance(u.col, u.row, step.col, step.row);
-                        if (u.type === 'observation' && barricadeDist <= viewRange && barricadesBypassed < 1) {
-                            barricadesBypassed++;
-                            continue; // Bypasses the first barricade securely within local radius constraints
+                        if (!currentlyInBarricade) {
+                            barricadeGroupsBypassed++;
+                            currentlyInBarricade = true;
+                        }
+
+                        if (u.type === 'observation' && barricadeGroupsBypassed <= 1) {
+                            continue; // Bypasses the very first contiguous barricade mass it encounters (which is its own wall)
                         }
                         blocked = true;
                         break;
+                    } else {
+                        currentlyInBarricade = false;
                     }
                 }
             }
@@ -944,20 +950,26 @@ class HexGame {
                 const line = hexMath.hexLine(col, row, c, r);
                 let targetDist = hexMath.offsetDistance(col, row, c, r);
                 let blocked = false;
-                let barricadesBypassed = 0;
+                let barricadeGroupsBypassed = 0;
+                let currentlyInBarricade = false;
                 // Exclude last tile in the loop since we want to see what is ON it even if barricade
                 for (let i = 0; i < line.length - 1; i++) {
                     const stepCol = line[i].col;
                     const stepRow = line[i].row;
                     if (this.isValid(stepCol, stepRow)) {
                         if (this.getTile(stepCol, stepRow).isBarricade) {
-                            let barricadeDist = hexMath.offsetDistance(col, row, stepCol, stepRow);
-                            if (isObservation && barricadeDist <= viewRange && barricadesBypassed < 1) {
-                                barricadesBypassed++;
+                            if (!currentlyInBarricade) {
+                                barricadeGroupsBypassed++;
+                                currentlyInBarricade = true;
+                            }
+
+                            if (isObservation && barricadeGroupsBypassed <= 1) {
                                 continue;
                             }
                             blocked = true;
                             break;
+                        } else {
+                            currentlyInBarricade = false;
                         }
                     }
                 }
