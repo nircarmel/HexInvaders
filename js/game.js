@@ -667,6 +667,8 @@ export class HexGame {
         const isEnemy = tile.unit.team !== perspective;
         if (!isEnemy) return false;
 
+        if (tile.unit.type === 'observation') return false;
+
         if (tile.unit.exposedCounter && tile.unit.exposedCounter > 0) return false;
 
         if (this.config.mode === 'HIDDEN') return true;

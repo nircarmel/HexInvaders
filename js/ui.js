@@ -193,7 +193,7 @@ export class UIManager {
             }
 
             // Absolutely hide completely if blocked by barricade line-of-sight
-            if (tile.unit.team !== perspective && !this.game.canSeeUnit(col, row, perspective)) {
+            if (tile.unit.team !== perspective && tile.unit.type !== 'observation' && !this.game.canSeeUnit(col, row, perspective)) {
                 if (this.unitTooltip) this.unitTooltip.classList.add('hidden');
                 return;
             }
@@ -204,11 +204,14 @@ export class UIManager {
                 hideStats = false;
             }
 
+            if (!this.game.selectedTile && !this._contextTarget) {
+                this.render.visionHexes = this.game.getUnitVision(col, row);
+            }
+
             if (!hideStats) {
                 if (!this.game.selectedTile && !this._contextTarget) {
                     this.render.hoverHexes = this.game.getReachableHexes(col, row, tile.unit.team, tile.unit.speed);
                     this.render.hoverHexesColor = 'rgba(136, 119, 0, 0.5)';
-                    this.render.visionHexes = this.game.getUnitVision(col, row);
                 }
 
                 document.getElementById('tt-str').innerText = tile.unit.strength;
