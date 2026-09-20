@@ -38,7 +38,9 @@ An active combat unit can intentionally sacrifice itself to convert a set of til
 
 ## 6. Vision and Fog of War
 The game enforces strict Fog of War rules (when configured in "Hidden" or "Nearby" modes):
-- Enemy units and their stats are entirely invisible unless they fall within the Line of Sight of at least one friendly unit.
-- Line of sight is calculated by raytracing from friendly units. 
-- **Barricades block vision** for all standard combat units. 
-- **Observation Units** are unique non-combat entities: they have the special ability to perfectly pierce through the local barricade that spawned them, allowing them to indefinitely spot deep into enemy territory behind the safety of a wall. However, they cannot pierce distant enemy barricades.
+- Enemy units are entirely invisible unless they fall within the Line of Sight of at least one friendly unit.
+- Line of sight is calculated by raytracing from friendly units. Barricades block vision for standard combat units.
+- **Spotting vs Inspecting**: There is a strict distinction between seeing a unit's location and seeing its details:
+  - **Spotting**: You can spot an enemy unit (revealing its location on the board) at *any* infinite distance, provided the line of sight is not blocked by a barricade.
+  - **Inspecting**: You can only inspect an enemy unit (revealing its detailed stats like Power and Speed) if it is physically close enough. The maximum inspect distance is `maxSpeed + 1` for standard units, and `maxSpeed + 2` for observation units. 
+- **Observation Units**: Unique non-combat entities (0 Power, 0 Speed) spawned behind Barricades. They perfectly pierce through the local barricade that spawned them, allowing them to indefinitely spot deep into enemy territory behind the safety of a wall (though they are still blocked by distant enemy barricades).
