@@ -8,8 +8,6 @@ export class UIManager {
         this.input = input;
 
         this.currentAction = null; // 'MOVE', 'WAITING_MOVE'
-        this.overlayMode = 'NONE';
-        this.playerOverlayPrefs = { 'BLUE': 'NONE', 'RED': 'NONE' };
 
         this.bindEvents();
         this.updateHUD();
@@ -30,14 +28,6 @@ export class UIManager {
             this.render.validPath = null;
             this.closeContextMenu();
             this.updateHUD();
-
-            // Auto-restore overlay memory config specific to the Active player's previous choice
-            const pref = this.playerOverlayPrefs[this.game.activeTeam];
-            this.overlayMode = pref;
-            this.render.overlayMode = pref;
-
-            const matchingRadio = document.querySelector(`input[name="overlayToggle"][value="${pref}"]`);
-            if (matchingRadio) matchingRadio.checked = true;
         };
         this.game.onWinner = (team, reason) => this.showVictory(team, reason);
     }
@@ -128,18 +118,6 @@ export class UIManager {
         const btnRestart = document.getElementById('btn-restart-game');
         if (btnRestart) btnRestart.onclick = () => { if (window.restartCurrentGame) window.restartCurrentGame(); };
 
-        // Bind Overlay Radio buttons
-        const overlayRadios = document.querySelectorAll('input[name="overlayToggle"]');
-        overlayRadios.forEach(radio => {
-            radio.addEventListener('change', (e) => {
-                if (e.target.checked) {
-                    this.overlayMode = e.target.value;
-                    this.render.overlayMode = e.target.value;
-                    this.playerOverlayPrefs[this.game.activeTeam] = e.target.value;
-                }
-            });
-        });
-
         // Context Menu Elements
         this.contextMenu = document.getElementById('context-menu');
         this.contextOptions = document.getElementById('context-options');
@@ -195,6 +173,7 @@ export class UIManager {
 
     updateTooltip(e) {
         this.render.hoverHexes = null;
+        this.render.visionHexes = null;
         const hover = this.render.hoveredHex;
         if (!hover) {
             if (this.unitTooltip) this.unitTooltip.classList.add('hidden');
@@ -230,6 +209,8 @@ export class UIManager {
                     this.render.hoverHexes = this.game.getReachableHexes(col, row, tile.unit.team, tile.unit.speed);
                     this.render.hoverHexesColor = 'rgba(255, 255, 255, 0.06)';
                 }
+
+                this.render.visionHexes = this.game.getUnitVision(col, row);
 
                 document.getElementById('tt-str').innerText = tile.unit.strength;
                 document.getElementById('tt-spd').innerText = tile.unit.speed;

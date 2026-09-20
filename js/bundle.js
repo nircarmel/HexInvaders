@@ -841,7 +841,7 @@ class HexGame {
                 for (let r = 0; r < this.rows; r++) {
                     const t = this.getTile(c, r);
                     if (t.unit && t.unit.team === perspective) {
-                        let viewRange = this.config.maxSpeed + 1;
+                        let viewRange = this.config.maxSpeed + 2;
                         if (t.unit.type === 'observation') {
                             viewRange = this.config.maxSpeed * 2;
                         }
@@ -911,56 +911,45 @@ class HexGame {
     }
 
     invalidateOverlayCache() {
-        this.overlayCache = { 'BLUE': null, 'RED': null };
+        // Obsolete (Hovers compute locally)
     }
 
-    getOverlayMaps(team) {
-        if (this.overlayCache[team]) return this.overlayCache[team];
+    getUnitVision(col, row) {
+        let spot = new Set();
+        let inspect = new Set();
+        let centerTile = this.getTile(col, row);
+        if (!centerTile || !centerTile.unit) return { spot, inspect };
 
-        const go = new Set();
-        const observe = new Set();
-        const spot = new Set();
+        let u = centerTile.unit;
+        let viewRange = this.config.maxSpeed + 2;
+        if (u.type === 'observation') viewRange = this.config.maxSpeed * 3;
 
-        const myUnits = this.getAllUnits(team);
-
-        // Calculate "Go"
-        for (let u of myUnits) {
-            if (u.unit.speed > 0) {
-                const reach = this.getReachableHexes(u.col, u.row, team, u.unit.speed);
-                for (let k of reach) go.add(k);
-            }
-        }
-
-        // Calculate Observe and Spot
         for (let c = 0; c < this.cols; c++) {
             for (let r = 0; r < this.rows; r++) {
-                const k = `${c},${r}`;
+                if (c === col && r === row) continue;
 
-                // Validate if it's broadly spotted (unblocked LoS)
-                const isSpotted = this.canSeeUnit(c, r, team);
-                if (isSpotted) {
-                    let observed = false;
-                    for (let u of myUnits) {
-                        let viewRange = this.config.maxSpeed + 1;
-                        if (u.unit.type === 'observation') viewRange = this.config.maxSpeed * 2;
-
-                        if (hexMath.offsetDistance(c, r, u.col, u.row) <= viewRange) {
-                            observed = true;
+                const line = hexMath.hexLine(col, row, c, r);
+                let blocked = false;
+                // Exclude last tile in the loop since we want to see what is ON it even if barricade
+                for (let i = 0; i < line.length - 1; i++) {
+                    const stepOff = hexMath.axialToOffset(line[i].q, line[i].r);
+                    if (this.isValid(stepOff.col, stepOff.row)) {
+                        if (this.getTile(stepOff.col, stepOff.row).isBarricade) {
+                            blocked = true;
                             break;
                         }
                     }
+                }
 
-                    if (observed && !go.has(k)) {
-                        observe.add(k);
-                    } else if (!observed && !go.has(k)) {
-                        spot.add(k);
+                if (!blocked) {
+                    spot.add(`${c},${r}`);
+                    if (hexMath.offsetDistance(c, r, col, row) <= viewRange) {
+                        inspect.add(`${c},${r}`);
                     }
                 }
             }
         }
-
-        this.overlayCache[team] = { go, observe, spot };
-        return this.overlayCache[team];
+        return { spot, inspect, team: u.team };
     }
 
     checkWinConditions() {
@@ -1476,15 +1465,13 @@ class RenderEngine {
                 if (col === 0) fill = 'rgba(59, 130, 246, 0.45)'; // Brighter Blue zone
                 if (col === this.game.cols - 1) fill = 'rgba(239, 68, 68, 0.45)'; // Brighter Red zone
 
-                // Map Overlay Shading Rules
-                if (this.overlayMode && this.overlayMode !== 'NONE') {
-                    const omaps = this.game.getOverlayMaps(this.overlayMode);
-                    if (omaps.go.has(key)) {
-                        fill = this.overlayMode === 'BLUE' ? 'rgba(30, 58, 138, 0.9)' : 'rgba(127, 29, 29, 0.9)';
-                    } else if (omaps.observe.has(key)) {
-                        fill = this.overlayMode === 'BLUE' ? 'rgba(30, 64, 175, 0.65)' : 'rgba(153, 27, 27, 0.65)';
-                    } else if (omaps.spot.has(key)) {
-                        fill = this.overlayMode === 'BLUE' ? 'rgba(37, 99, 235, 0.4)' : 'rgba(185, 28, 28, 0.4)';
+                // Unit Hover Vision Rules
+                if (this.visionHexes) {
+                    const vis = this.visionHexes;
+                    if (vis.inspect.has(key)) {
+                        fill = vis.team === 'BLUE' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(239, 68, 68, 0.3)';
+                    } else if (vis.spot.has(key)) {
+                        fill = vis.team === 'BLUE' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(239, 68, 68, 0.15)';
                     }
                 }
 
@@ -1621,8 +1608,6 @@ class UIManager {
         this.input = input;
 
         this.currentAction = null; // 'MOVE', 'WAITING_MOVE'
-        this.overlayMode = 'NONE';
-        this.playerOverlayPrefs = { 'BLUE': 'NONE', 'RED': 'NONE' };
 
         this.bindEvents();
         this.updateHUD();
@@ -1643,14 +1628,6 @@ class UIManager {
             this.render.validPath = null;
             this.closeContextMenu();
             this.updateHUD();
-
-            // Auto-restore overlay memory config specific to the Active player's previous choice
-            const pref = this.playerOverlayPrefs[this.game.activeTeam];
-            this.overlayMode = pref;
-            this.render.overlayMode = pref;
-
-            const matchingRadio = document.querySelector(`input[name="overlayToggle"][value="${pref}"]`);
-            if (matchingRadio) matchingRadio.checked = true;
         };
         this.game.onWinner = (team, reason) => this.showVictory(team, reason);
     }
@@ -1741,18 +1718,6 @@ class UIManager {
         const btnRestart = document.getElementById('btn-restart-game');
         if (btnRestart) btnRestart.onclick = () => { if (window.restartCurrentGame) window.restartCurrentGame(); };
 
-        // Bind Overlay Radio buttons
-        const overlayRadios = document.querySelectorAll('input[name="overlayToggle"]');
-        overlayRadios.forEach(radio => {
-            radio.addEventListener('change', (e) => {
-                if (e.target.checked) {
-                    this.overlayMode = e.target.value;
-                    this.render.overlayMode = e.target.value;
-                    this.playerOverlayPrefs[this.game.activeTeam] = e.target.value;
-                }
-            });
-        });
-
         // Context Menu Elements
         this.contextMenu = document.getElementById('context-menu');
         this.contextOptions = document.getElementById('context-options');
@@ -1808,6 +1773,7 @@ class UIManager {
 
     updateTooltip(e) {
         this.render.hoverHexes = null;
+        this.render.visionHexes = null;
         const hover = this.render.hoveredHex;
         if (!hover) {
             if (this.unitTooltip) this.unitTooltip.classList.add('hidden');
@@ -1843,6 +1809,8 @@ class UIManager {
                     this.render.hoverHexes = this.game.getReachableHexes(col, row, tile.unit.team, tile.unit.speed);
                     this.render.hoverHexesColor = 'rgba(255, 255, 255, 0.06)';
                 }
+
+                this.render.visionHexes = this.game.getUnitVision(col, row);
 
                 document.getElementById('tt-str').innerText = tile.unit.strength;
                 document.getElementById('tt-spd').innerText = tile.unit.speed;

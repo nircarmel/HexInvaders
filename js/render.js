@@ -313,15 +313,13 @@ export class RenderEngine {
                 if (col === 0) fill = 'rgba(59, 130, 246, 0.45)'; // Brighter Blue zone
                 if (col === this.game.cols - 1) fill = 'rgba(239, 68, 68, 0.45)'; // Brighter Red zone
 
-                // Map Overlay Shading Rules
-                if (this.overlayMode && this.overlayMode !== 'NONE') {
-                    const omaps = this.game.getOverlayMaps(this.overlayMode);
-                    if (omaps.go.has(key)) {
-                        fill = this.overlayMode === 'BLUE' ? 'rgba(30, 58, 138, 0.9)' : 'rgba(127, 29, 29, 0.9)';
-                    } else if (omaps.observe.has(key)) {
-                        fill = this.overlayMode === 'BLUE' ? 'rgba(30, 64, 175, 0.65)' : 'rgba(153, 27, 27, 0.65)';
-                    } else if (omaps.spot.has(key)) {
-                        fill = this.overlayMode === 'BLUE' ? 'rgba(37, 99, 235, 0.4)' : 'rgba(185, 28, 28, 0.4)';
+                // Unit Hover Vision Rules
+                if (this.visionHexes) {
+                    const vis = this.visionHexes;
+                    if (vis.inspect.has(key)) {
+                        fill = vis.team === 'BLUE' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(239, 68, 68, 0.3)';
+                    } else if (vis.spot.has(key)) {
+                        fill = vis.team === 'BLUE' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(239, 68, 68, 0.15)';
                     }
                 }
 
