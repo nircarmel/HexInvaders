@@ -720,7 +720,7 @@ class HexGame {
         if (this.actionUsed || this.phase !== 'MAIN' || this.winner || this.historyIndex !== this.history.length - 1)
             return { valid: false, reason: "Invalid mode." };
 
-        const cost = this.config ? (this.config.barricadeCost || 5) : 5;
+        const cost = this.config ? (this.config.barricadeCost || 10) : 10;
         if (this.credits[this.activeTeam] < cost)
             return { valid: false, reason: `Requires ${cost} credits.` };
 
@@ -782,7 +782,7 @@ class HexGame {
             this.network.sendData({ type: 'BARRICADE', col, row, offset });
         }
 
-        const cost = this.config ? (this.config.barricadeCost || 5) : 5;
+        const cost = this.config ? (this.config.barricadeCost || 10) : 10;
         const t = this.getTile(col, row);
         const u = t.unit;
         const footprint = this.getBarricadeFootprint(col, row, u.strength, offset);
@@ -2887,7 +2887,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 height: boardH,
                 credits: parseInt(document.getElementById('cfg-credits').value) || 50,
                 flagCost: parseInt(document.getElementById('cfg-flagCost').value) || 10,
-                barricadeCost: parseInt(document.getElementById('cfg-barricadeCost').value) || 5,
+                barricadeCost: parseInt(document.getElementById('cfg-barricadeCost').value) || 10,
                 maxStrength: parseInt(document.getElementById('cfg-maxStrength').value) || 10,
                 maxSpeed: parseInt(document.getElementById('cfg-maxSpeed').value) || 5,
                 timerDuration: parseInt(document.querySelector('input[name="cfg-timer"]:checked') ? document.querySelector('input[name="cfg-timer"]:checked').value : '0'),

@@ -183,7 +183,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 height: boardH,
                 credits: parseInt(document.getElementById('cfg-credits').value) || 50,
                 flagCost: parseInt(document.getElementById('cfg-flagCost').value) || 10,
-                barricadeCost: parseInt(document.getElementById('cfg-barricadeCost').value) || 5,
+                barricadeCost: parseInt(document.getElementById('cfg-barricadeCost').value) || 10,
                 maxStrength: parseInt(document.getElementById('cfg-maxStrength').value) || 10,
                 maxSpeed: parseInt(document.getElementById('cfg-maxSpeed').value) || 5,
                 timerDuration: parseInt(document.querySelector('input[name="cfg-timer"]:checked') ? document.querySelector('input[name="cfg-timer"]:checked').value : '0'),

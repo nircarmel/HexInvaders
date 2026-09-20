@@ -555,7 +555,7 @@ export class HexGame {
         if (this.actionUsed || this.phase !== 'MAIN' || this.winner || this.historyIndex !== this.history.length - 1)
             return { valid: false, reason: "Invalid mode." };
 
-        const cost = this.config ? (this.config.barricadeCost || 5) : 5;
+        const cost = this.config ? (this.config.barricadeCost || 10) : 10;
         if (this.credits[this.activeTeam] < cost)
             return { valid: false, reason: `Requires ${cost} credits.` };
 
@@ -617,7 +617,7 @@ export class HexGame {
             this.network.sendData({ type: 'BARRICADE', col, row, offset });
         }
 
-        const cost = this.config ? (this.config.barricadeCost || 5) : 5;
+        const cost = this.config ? (this.config.barricadeCost || 10) : 10;
         const t = this.getTile(col, row);
         const u = t.unit;
         const footprint = this.getBarricadeFootprint(col, row, u.strength, offset);
