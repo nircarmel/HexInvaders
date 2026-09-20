@@ -28,8 +28,8 @@ The player spends Credits to spawn a newly configured unit in their Home Zone.
 ### B. Move & Attack
 The player selects a deployed unit and moves it up to a maximum distance explicitly matching the unit's **Speed** stat. Pathfinding forbids moving through enemy units, friendly units, or barricades. 
 - **Combat**: If a unit's path ends strictly *on* an enemy unit, Combat resolves deterministically:
-  - **Deterministic Resolution**: The unit with the higher Power stat always wins.
-  - **Exhaustion (Depleting Power Engine)**: If enabled, the winning unit survives but physically permanently loses Power exactly equal to the defeated enemy's Power. If their Power is reduced to 0, they succumb to their wounds and die alongside the defender.
+  - **Deterministic Resolution**: The unit with the higher Power stat always wins. In the event of a tie (equal Power), the attacking unit always wins.
+  - **Exhaustion (Depleting Power Engine)**: If enabled, every battle is resolved with the loser being completely destroyed and the winning unit permanently losing exactly 1 power point (regardless of the losing unit's strength). If losing this 1 power point reduces the winning unit to 0 Power, they succumb to their wounds and die alongside the defender.
 
 ### C. Construct a Barricade
 An active combat unit can intentionally sacrifice itself to convert a set of tiles into an impassable **Barricade**. 
