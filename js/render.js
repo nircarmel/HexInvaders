@@ -317,9 +317,9 @@ export class RenderEngine {
                 if (this.visionHexes) {
                     const vis = this.visionHexes;
                     if (vis.inspect.has(key)) {
-                        fill = vis.team === 'BLUE' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(239, 68, 68, 0.3)';
+                        fill = vis.team === 'BLUE' ? 'rgba(59, 130, 246, 0.07)' : 'rgba(239, 68, 68, 0.07)';
                     } else if (vis.spot.has(key)) {
-                        fill = vis.team === 'BLUE' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(239, 68, 68, 0.15)';
+                        fill = vis.team === 'BLUE' ? 'rgba(59, 130, 246, 0.03)' : 'rgba(239, 68, 68, 0.03)';
                     }
                 }
 

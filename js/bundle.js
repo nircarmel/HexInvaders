@@ -1469,9 +1469,9 @@ class RenderEngine {
                 if (this.visionHexes) {
                     const vis = this.visionHexes;
                     if (vis.inspect.has(key)) {
-                        fill = vis.team === 'BLUE' ? 'rgba(59, 130, 246, 0.3)' : 'rgba(239, 68, 68, 0.3)';
+                        fill = vis.team === 'BLUE' ? 'rgba(59, 130, 246, 0.07)' : 'rgba(239, 68, 68, 0.07)';
                     } else if (vis.spot.has(key)) {
-                        fill = vis.team === 'BLUE' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(239, 68, 68, 0.15)';
+                        fill = vis.team === 'BLUE' ? 'rgba(59, 130, 246, 0.03)' : 'rgba(239, 68, 68, 0.03)';
                     }
                 }
 
@@ -1807,7 +1807,7 @@ class UIManager {
             if (!hideStats) {
                 if (!this.game.selectedTile && !this._contextTarget) {
                     this.render.hoverHexes = this.game.getReachableHexes(col, row, tile.unit.team, tile.unit.speed);
-                    this.render.hoverHexesColor = 'rgba(255, 255, 255, 0.06)';
+                    this.render.hoverHexesColor = tile.unit.team === 'BLUE' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(239, 68, 68, 0.15)';
                 }
 
                 this.render.visionHexes = this.game.getUnitVision(col, row);
