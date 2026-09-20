@@ -1467,8 +1467,8 @@ class RenderEngine {
                 const isHomeBase = col === 0 || col === this.game.cols - 1;
 
                 // Base zone colors
-                if (col === 0) fill = 'rgba(59, 130, 246, 0.2)'; // Brighter Blue zone
-                if (col === this.game.cols - 1) fill = 'rgba(239, 68, 68, 0.2)'; // Brighter Red zone
+                if (col === 0) fill = 'rgba(59, 130, 246, 0.3)'; // Brighter Blue zone
+                if (col === this.game.cols - 1) fill = 'rgba(239, 68, 68, 0.3)'; // Brighter Red zone
 
                 // Unit Hover Vision Rules
                 if (this.visionHexes && !isHomeBase) {
