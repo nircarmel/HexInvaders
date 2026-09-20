@@ -197,6 +197,7 @@ class HexGame {
         this.selectedTile = null;
         this.actionUsed = false;
         this.winner = null;
+        this.gameFinished = false;
 
         // Deployment tracking Rules
         this.deployCounts = { 'BLUE': 0, 'RED': 0 };
@@ -222,7 +223,7 @@ class HexGame {
     }
 
     get isGameOver() {
-        return this.history.length > 0 && this.history[this.history.length - 1].winner !== null;
+        return this.gameFinished === true || (this.history.length > 0 && this.history[this.history.length - 1].winner !== null);
     }
 
     startTimer() {
@@ -1001,6 +1002,7 @@ class HexGame {
 
     setWinner(team, reason) {
         this.winner = team;
+        this.gameFinished = true;
         const winName = team === 'BLUE' ? this.blueName : this.redName;
         this.logSystem(`GAME OVER. ${winName} wins! ${reason}`);
         this.saveSnapshot();
