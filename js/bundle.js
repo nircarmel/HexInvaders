@@ -801,11 +801,11 @@ class HexGame {
         }
 
         // Spawn Observation Unit
-        let obsCol = this.activeTeam === 'BLUE' ? col + 1 : col - 1;
+        let obsCol = this.activeTeam === 'BLUE' ? col - 1 : col + 1;
         let obsRow = row;
-        // Slide outward towards enemy bounds until free tile found
+        // Slide inward towards home bounds until free tile found
         while (previewKeys.has(`${obsCol},${obsRow}`) || (this.isValid(obsCol, obsRow) && this.getTile(obsCol, obsRow).unit !== null)) {
-            obsCol += (this.activeTeam === 'BLUE' ? 1 : -1);
+            obsCol += (this.activeTeam === 'BLUE' ? -1 : 1);
             if (!this.isValid(obsCol, obsRow)) break;
         }
 
@@ -844,9 +844,6 @@ class HexGame {
                     const t = this.getTile(c, r);
                     if (t.unit && t.unit.team === perspective) {
                         let viewRange = this.config.maxSpeed + 2;
-                        if (t.unit.type === 'observation') {
-                            viewRange = this.config.maxSpeed * 2;
-                        }
 
                         if (hexMath.offsetDistance(col, row, c, r) <= viewRange) {
                             return false; // Found a friendly unit close enough
@@ -867,7 +864,7 @@ class HexGame {
             for (let row = 0; row < this.rows; row++) {
                 const t = this.getTile(col, row);
                 if (t.unit && t.unit.team === perspectiveTeam) {
-                    myUnits.push({ col, row });
+                    myUnits.push({ col, row, type: t.unit.type });
                 }
             }
         }
@@ -885,7 +882,7 @@ class HexGame {
                 const step = line[i];
                 if (this.isValid(step.col, step.row)) {
                     const stepTile = this.getTile(step.col, step.row);
-                    if (stepTile.isBarricade) {
+                    if (stepTile.isBarricade && u.type !== 'observation') {
                         blocked = true;
                         break;
                     }
@@ -924,7 +921,7 @@ class HexGame {
 
         let u = centerTile.unit;
         let viewRange = this.config.maxSpeed + 2;
-        if (u.type === 'observation') viewRange = this.config.maxSpeed * 3;
+        const isObservation = u.type === 'observation';
 
         for (let c = 0; c < this.cols; c++) {
             for (let r = 0; r < this.rows; r++) {
@@ -937,7 +934,7 @@ class HexGame {
                     const stepCol = line[i].col;
                     const stepRow = line[i].row;
                     if (this.isValid(stepCol, stepRow)) {
-                        if (this.getTile(stepCol, stepRow).isBarricade) {
+                        if (this.getTile(stepCol, stepRow).isBarricade && !isObservation) {
                             blocked = true;
                             break;
                         }
