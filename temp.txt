@@ -555,7 +555,7 @@ export class HexGame {
         if (this.actionUsed || this.phase !== 'MAIN' || this.winner || this.historyIndex !== this.history.length - 1)
             return { valid: false, reason: "Invalid mode." };
 
-        const cost = this.config ? (this.config.barricadeCost || 10) : 10;
+        const cost = this.config ? (this.config.barricadeCost || 5) : 5;
         if (this.credits[this.activeTeam] < cost)
             return { valid: false, reason: `Requires ${cost} credits.` };
 
@@ -617,7 +617,7 @@ export class HexGame {
             this.network.sendData({ type: 'BARRICADE', col, row, offset });
         }
 
-        const cost = this.config ? (this.config.barricadeCost || 10) : 10;
+        const cost = this.config ? (this.config.barricadeCost || 5) : 5;
         const t = this.getTile(col, row);
         const u = t.unit;
         const footprint = this.getBarricadeFootprint(col, row, u.strength, offset);
@@ -636,11 +636,11 @@ export class HexGame {
         }
 
         // Spawn Observation Unit
-        let obsCol = this.activeTeam === 'BLUE' ? col - 1 : col + 1;
+        let obsCol = this.activeTeam === 'BLUE' ? col + 1 : col - 1;
         let obsRow = row;
-        // Slide inward towards home bounds until free tile found
+        // Slide outward towards enemy bounds until free tile found
         while (previewKeys.has(`${obsCol},${obsRow}`) || (this.isValid(obsCol, obsRow) && this.getTile(obsCol, obsRow).unit !== null)) {
-            obsCol += (this.activeTeam === 'BLUE' ? -1 : 1);
+            obsCol += (this.activeTeam === 'BLUE' ? 1 : -1);
             if (!this.isValid(obsCol, obsRow)) break;
         }
 
@@ -679,6 +679,9 @@ export class HexGame {
                     const t = this.getTile(c, r);
                     if (t.unit && t.unit.team === perspective) {
                         let viewRange = this.config.maxSpeed + 2;
+                        if (t.unit.type === 'observation') {
+                            viewRange = this.config.maxSpeed * 2;
+                        }
 
                         if (hexMath.offsetDistance(col, row, c, r) <= viewRange) {
                             return false; // Found a friendly unit close enough
@@ -699,7 +702,7 @@ export class HexGame {
             for (let row = 0; row < this.rows; row++) {
                 const t = this.getTile(col, row);
                 if (t.unit && t.unit.team === perspectiveTeam) {
-                    myUnits.push({ col, row, type: t.unit.type });
+                    myUnits.push({ col, row });
                 }
             }
         }
@@ -707,11 +710,10 @@ export class HexGame {
         // If player has no units, sees none
         if (myUnits.length === 0) return false;
 
+        // Iterate through friendly units to check if ANY have unobstructed LOS to target
         for (let u of myUnits) {
             const line = hexMath.hexLine(u.col, u.row, targetCol, targetRow);
             let blocked = false;
-            let viewRange = this.config.maxSpeed + 2;
-            let targetDist = hexMath.offsetDistance(u.col, u.row, targetCol, targetRow);
 
             // Check intermediate steps exclusively (skip 0 which is source, skip length-1 which is target)
             for (let i = 1; i < line.length - 1; i++) {
@@ -719,9 +721,6 @@ export class HexGame {
                 if (this.isValid(step.col, step.row)) {
                     const stepTile = this.getTile(step.col, step.row);
                     if (stepTile.isBarricade) {
-                        if (u.type === 'observation' && targetDist <= viewRange) {
-                            continue; // Bypasses the barricade securely inside radius constraints
-                        }
                         blocked = true;
                         break;
                     }
@@ -760,14 +759,13 @@ export class HexGame {
 
         let u = centerTile.unit;
         let viewRange = this.config.maxSpeed + 2;
-        const isObservation = u.type === 'observation';
+        if (u.type === 'observation') viewRange = this.config.maxSpeed * 3;
 
         for (let c = 0; c < this.cols; c++) {
             for (let r = 0; r < this.rows; r++) {
                 if (c === col && r === row) continue;
 
                 const line = hexMath.hexLine(col, row, c, r);
-                let targetDist = hexMath.offsetDistance(col, row, c, r);
                 let blocked = false;
                 // Exclude last tile in the loop since we want to see what is ON it even if barricade
                 for (let i = 0; i < line.length - 1; i++) {
@@ -775,9 +773,6 @@ export class HexGame {
                     const stepRow = line[i].row;
                     if (this.isValid(stepCol, stepRow)) {
                         if (this.getTile(stepCol, stepRow).isBarricade) {
-                            if (isObservation && targetDist <= viewRange) {
-                                continue;
-                            }
                             blocked = true;
                             break;
                         }

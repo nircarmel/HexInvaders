@@ -872,17 +872,21 @@ class HexGame {
         // If player has no units, sees none
         if (myUnits.length === 0) return false;
 
-        // Iterate through friendly units to check if ANY have unobstructed LOS to target
         for (let u of myUnits) {
             const line = hexMath.hexLine(u.col, u.row, targetCol, targetRow);
             let blocked = false;
+            let viewRange = this.config.maxSpeed + 2;
+            let targetDist = hexMath.offsetDistance(u.col, u.row, targetCol, targetRow);
 
             // Check intermediate steps exclusively (skip 0 which is source, skip length-1 which is target)
             for (let i = 1; i < line.length - 1; i++) {
                 const step = line[i];
                 if (this.isValid(step.col, step.row)) {
                     const stepTile = this.getTile(step.col, step.row);
-                    if (stepTile.isBarricade && u.type !== 'observation') {
+                    if (stepTile.isBarricade) {
+                        if (u.type === 'observation' && targetDist <= viewRange) {
+                            continue; // Bypasses the barricade securely inside radius constraints
+                        }
                         blocked = true;
                         break;
                     }
@@ -928,13 +932,17 @@ class HexGame {
                 if (c === col && r === row) continue;
 
                 const line = hexMath.hexLine(col, row, c, r);
+                let targetDist = hexMath.offsetDistance(col, row, c, r);
                 let blocked = false;
                 // Exclude last tile in the loop since we want to see what is ON it even if barricade
                 for (let i = 0; i < line.length - 1; i++) {
                     const stepCol = line[i].col;
                     const stepRow = line[i].row;
                     if (this.isValid(stepCol, stepRow)) {
-                        if (this.getTile(stepCol, stepRow).isBarricade && !isObservation) {
+                        if (this.getTile(stepCol, stepRow).isBarricade) {
+                            if (isObservation && targetDist <= viewRange) {
+                                continue;
+                            }
                             blocked = true;
                             break;
                         }
@@ -1718,7 +1726,7 @@ class UIManager {
         if (btnExitGame) btnExitGame.onclick = () => location.reload();
 
         const btnRestart = document.getElementById('btn-restart-game');
-        if (btnRestart) btnRestart.onclick = () => { if (window.restartCurrentGame) window.restartCurrentGame(); };
+        if (btnRestart) btnRestart.onclick = () => { if (window.restartCurrentGame) window.restartCurrentGame(this.game.config); };
 
         // Context Menu Elements
         this.contextMenu = document.getElementById('context-menu');
@@ -2366,7 +2374,7 @@ class UIManager {
                 btnRestart.style.display = 'block';
                 btnRestart.onclick = () => {
                     if (window.restartCurrentGame) {
-                        window.restartCurrentGame();
+                        window.restartCurrentGame(this.game.config);
                     }
                 };
             }

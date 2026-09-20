@@ -116,7 +116,7 @@ export class UIManager {
         if (btnExitGame) btnExitGame.onclick = () => location.reload();
 
         const btnRestart = document.getElementById('btn-restart-game');
-        if (btnRestart) btnRestart.onclick = () => { if (window.restartCurrentGame) window.restartCurrentGame(); };
+        if (btnRestart) btnRestart.onclick = () => { if (window.restartCurrentGame) window.restartCurrentGame(this.game.config); };
 
         // Context Menu Elements
         this.contextMenu = document.getElementById('context-menu');
@@ -764,7 +764,7 @@ export class UIManager {
                 btnRestart.style.display = 'block';
                 btnRestart.onclick = () => {
                     if (window.restartCurrentGame) {
-                        window.restartCurrentGame();
+                        window.restartCurrentGame(this.game.config);
                     }
                 };
             }
