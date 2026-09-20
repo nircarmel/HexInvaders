@@ -1474,9 +1474,9 @@ class RenderEngine {
                 if (this.visionHexes && !isHomeBase) {
                     const vis = this.visionHexes;
                     if (vis.inspect.has(key)) {
-                        fill = 'rgba(16, 185, 129, 0.09)';
+                        fill = 'rgba(16, 185, 129, 0.24)';
                     } else if (vis.spot.has(key)) {
-                        fill = 'rgba(16, 185, 129, 0.05)';
+                        fill = 'rgba(16, 185, 129, 0.20)';
                     }
                 }
 
@@ -1505,9 +1505,9 @@ class RenderEngine {
                         fill = 'rgba(16, 185, 129, 0.2)';
                     }
                 } else if (this.highlightHexes && this.highlightHexes.includes(key) && !isHomeBase) {
-                    fill = 'rgba(16, 185, 129, 0.15)'; // Subtle green for reachable
+                    fill = 'rgba(16, 185, 129, 0.3)'; // Subtle green for reachable
                 } else if (this.hoverHexes && this.hoverHexes.includes(key) && !isHomeBase) {
-                    fill = this.hoverHexesColor || 'rgba(16, 185, 129, 0.15)'; // Render the specific team color during hover
+                    fill = this.hoverHexesColor || 'rgba(16, 185, 129, 0.3)'; // Render the specific team color during hover
                 } else if (this.previewBarricade && this.previewBarricade.includes(key)) {
                     if (this.game.activeTeam === 'BLUE') {
                         fill = 'rgba(59, 130, 246, 0.4)';
@@ -1816,7 +1816,7 @@ class UIManager {
             if (!hideStats) {
                 if (!this.game.selectedTile && !this._contextTarget) {
                     this.render.hoverHexes = this.game.getReachableHexes(col, row, tile.unit.team, tile.unit.speed);
-                    this.render.hoverHexesColor = 'rgba(16, 185, 129, 0.15)';
+                    this.render.hoverHexesColor = 'rgba(16, 185, 129, 0.3)';
                 }
 
                 document.getElementById('tt-str').innerText = tile.unit.strength;
