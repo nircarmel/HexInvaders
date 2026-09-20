@@ -207,7 +207,7 @@ export class UIManager {
             if (!hideStats) {
                 if (!this.game.selectedTile && !this._contextTarget) {
                     this.render.hoverHexes = this.game.getReachableHexes(col, row, tile.unit.team, tile.unit.speed);
-                    this.render.hoverHexesColor = tile.unit.team === 'BLUE' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(239, 68, 68, 0.15)';
+                    this.render.hoverHexesColor = 'rgba(136, 119, 0, 0.5)';
                 }
 
                 this.render.visionHexes = this.game.getUnitVision(col, row);

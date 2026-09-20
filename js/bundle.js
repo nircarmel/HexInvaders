@@ -932,9 +932,10 @@ class HexGame {
                 let blocked = false;
                 // Exclude last tile in the loop since we want to see what is ON it even if barricade
                 for (let i = 0; i < line.length - 1; i++) {
-                    const stepOff = hexMath.axialToOffset(line[i].q, line[i].r);
-                    if (this.isValid(stepOff.col, stepOff.row)) {
-                        if (this.getTile(stepOff.col, stepOff.row).isBarricade) {
+                    const stepCol = line[i].col;
+                    const stepRow = line[i].row;
+                    if (this.isValid(stepCol, stepRow)) {
+                        if (this.getTile(stepCol, stepRow).isBarricade) {
                             blocked = true;
                             break;
                         }
@@ -1457,7 +1458,7 @@ class RenderEngine {
                 const key = `${col},${row}`;
                 const tile = this.game.getTile(col, row);
 
-                let fill = 'rgba(255,255,255,0.03)';
+                let fill = 'rgba(255,255,255,0.015)';
                 let stroke = 'rgba(255,255,255,0.1)';
                 let lineWidth = 1;
 
@@ -1469,9 +1470,9 @@ class RenderEngine {
                 if (this.visionHexes) {
                     const vis = this.visionHexes;
                     if (vis.inspect.has(key)) {
-                        fill = vis.team === 'BLUE' ? 'rgba(59, 130, 246, 0.07)' : 'rgba(239, 68, 68, 0.07)';
+                        fill = 'rgba(92, 82, 4, 0.5)';
                     } else if (vis.spot.has(key)) {
-                        fill = vis.team === 'BLUE' ? 'rgba(59, 130, 246, 0.03)' : 'rgba(239, 68, 68, 0.03)';
+                        fill = 'rgba(48, 45, 8, 0.5)';
                     }
                 }
 
@@ -1807,7 +1808,7 @@ class UIManager {
             if (!hideStats) {
                 if (!this.game.selectedTile && !this._contextTarget) {
                     this.render.hoverHexes = this.game.getReachableHexes(col, row, tile.unit.team, tile.unit.speed);
-                    this.render.hoverHexesColor = tile.unit.team === 'BLUE' ? 'rgba(59, 130, 246, 0.15)' : 'rgba(239, 68, 68, 0.15)';
+                    this.render.hoverHexesColor = 'rgba(136, 119, 0, 0.5)';
                 }
 
                 this.render.visionHexes = this.game.getUnitVision(col, row);

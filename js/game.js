@@ -767,9 +767,10 @@ export class HexGame {
                 let blocked = false;
                 // Exclude last tile in the loop since we want to see what is ON it even if barricade
                 for (let i = 0; i < line.length - 1; i++) {
-                    const stepOff = hexMath.axialToOffset(line[i].q, line[i].r);
-                    if (this.isValid(stepOff.col, stepOff.row)) {
-                        if (this.getTile(stepOff.col, stepOff.row).isBarricade) {
+                    const stepCol = line[i].col;
+                    const stepRow = line[i].row;
+                    if (this.isValid(stepCol, stepRow)) {
+                        if (this.getTile(stepCol, stepRow).isBarricade) {
                             blocked = true;
                             break;
                         }
