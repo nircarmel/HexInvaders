@@ -891,8 +891,9 @@ class HexGame {
                 if (this.isValid(step.col, step.row)) {
                     const stepTile = this.getTile(step.col, step.row);
                     if (stepTile.isBarricade) {
-                        if (u.type === 'observation' && targetDist <= viewRange) {
-                            continue; // Bypasses the barricade securely inside radius constraints
+                        let barricadeDist = hexMath.offsetDistance(u.col, u.row, step.col, step.row);
+                        if (u.type === 'observation' && barricadeDist <= viewRange) {
+                            continue; // Bypasses barricades securely within local radius constraints
                         }
                         blocked = true;
                         break;
@@ -947,7 +948,8 @@ class HexGame {
                     const stepRow = line[i].row;
                     if (this.isValid(stepCol, stepRow)) {
                         if (this.getTile(stepCol, stepRow).isBarricade) {
-                            if (isObservation && targetDist <= viewRange) {
+                            let barricadeDist = hexMath.offsetDistance(col, row, stepCol, stepRow);
+                            if (isObservation && barricadeDist <= viewRange) {
                                 continue;
                             }
                             blocked = true;
