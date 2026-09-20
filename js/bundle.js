@@ -1811,9 +1811,8 @@ class UIManager {
                 if (!this.game.selectedTile && !this._contextTarget) {
                     this.render.hoverHexes = this.game.getReachableHexes(col, row, tile.unit.team, tile.unit.speed);
                     this.render.hoverHexesColor = 'rgba(136, 119, 0, 0.5)';
+                    this.render.visionHexes = this.game.getUnitVision(col, row);
                 }
-
-                this.render.visionHexes = this.game.getUnitVision(col, row);
 
                 document.getElementById('tt-str').innerText = tile.unit.strength;
                 document.getElementById('tt-spd').innerText = tile.unit.speed;
