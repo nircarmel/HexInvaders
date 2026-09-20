@@ -309,12 +309,14 @@ export class RenderEngine {
                 let stroke = 'rgba(255,255,255,0.1)';
                 let lineWidth = 1;
 
+                const isHomeBase = col === 0 || col === this.game.cols - 1;
+
                 // Base zone colors
-                if (col === 0) fill = 'rgba(59, 130, 246, 0.45)'; // Brighter Blue zone
-                if (col === this.game.cols - 1) fill = 'rgba(239, 68, 68, 0.45)'; // Brighter Red zone
+                if (col === 0) fill = 'rgba(59, 130, 246, 0.2)'; // Brighter Blue zone
+                if (col === this.game.cols - 1) fill = 'rgba(239, 68, 68, 0.2)'; // Brighter Red zone
 
                 // Unit Hover Vision Rules
-                if (this.visionHexes) {
+                if (this.visionHexes && !isHomeBase) {
                     const vis = this.visionHexes;
                     if (vis.inspect.has(key)) {
                         fill = 'rgba(92, 82, 4, 0.5)';
@@ -347,9 +349,9 @@ export class RenderEngine {
                     } else {
                         fill = 'rgba(16, 185, 129, 0.2)';
                     }
-                } else if (this.highlightHexes && this.highlightHexes.includes(key)) {
+                } else if (this.highlightHexes && this.highlightHexes.includes(key) && !isHomeBase) {
                     fill = 'rgba(16, 185, 129, 0.15)'; // Subtle green for reachable
-                } else if (this.hoverHexes && this.hoverHexes.includes(key)) {
+                } else if (this.hoverHexes && this.hoverHexes.includes(key) && !isHomeBase) {
                     fill = this.hoverHexesColor || 'rgba(16, 185, 129, 0.15)'; // Render the specific team color during hover
                 } else if (this.previewBarricade && this.previewBarricade.includes(key)) {
                     if (this.game.activeTeam === 'BLUE') {
