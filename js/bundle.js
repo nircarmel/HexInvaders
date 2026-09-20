@@ -2023,26 +2023,56 @@ class UIManager {
         this._contextTarget = null;
     }
 
-    openContextMenu(x, y, col, row, options) {
+    openContextMenu(x, y, col, row, options, customOpts = {}) {
         this.closeContextMenu();
         this._contextTarget = { col, row };
 
-        // Build buttons first to populate DOM
-        options.forEach(opt => {
-            const btn = document.createElement('button');
-            btn.className = 'btn-action';
-            btn.innerText = opt.label;
-            btn.addEventListener('click', opt.onClick);
-            this.contextOptions.appendChild(btn);
-        });
+        const headerText = this.contextMenu.querySelector('h4');
+        const closeBtn = document.getElementById('btn-close-context');
+
+        if (customOpts.isBarricade) {
+            headerText.innerText = 'Build a Barricade';
+            closeBtn.style.display = 'none';
+
+            this.contextOptions.innerHTML = `
+                <div style="text-align: center; color: #ccc; margin-bottom: 20px; font-size: 0.95rem;">
+                    <div style="color: #60a5fa; font-weight: bold; margin-bottom: 10px;">Cost: ${customOpts.cost} credits</div>
+                    <div style="font-size: 0.85rem; line-height: 1.5;">
+                        <span style="font-size: 1.2rem; color: #10b981;">⇕</span><br>
+                        Scroll mouse to position<br>barricade
+                    </div>
+                </div>
+                <div style="display: flex; gap: 10px; justify-content: center;">
+                    <button id="btn-barricade-build" class="btn-action" style="background: rgba(16, 185, 129, 0.2); border-color: rgba(16, 185, 129, 0.4); color: #10b981;">Build</button>
+                    <button id="btn-barricade-cancel" class="btn-action" style="background: rgba(239, 68, 68, 0.2); border-color: rgba(239, 68, 68, 0.4); color: #ef4444;">Cancel</button>
+                </div>
+            `;
+
+            document.getElementById('btn-barricade-build').addEventListener('click', customOpts.onConfirm);
+            document.getElementById('btn-barricade-cancel').addEventListener('click', () => {
+                this.resetActiveState();
+                this.updateHUD();
+            });
+        } else {
+            headerText.innerText = 'Deploy Unit';
+            closeBtn.style.display = 'block';
+
+            // Build buttons first to populate DOM
+            options.forEach(opt => {
+                const btn = document.createElement('button');
+                btn.className = 'btn-action';
+                btn.innerText = opt.label;
+                btn.addEventListener('click', opt.onClick);
+                this.contextOptions.appendChild(btn);
+            });
+        }
 
         this.contextMenu.classList.remove('hidden');
 
         const rect = this.canvas.getBoundingClientRect();
 
-        // Estimate the maximum possible size of this menu when the deploy panel expands (~450px tall, ~270px wide).
-        const estMaxHeight = 450;
-        const estMaxWidth = 270;
+        const estMaxHeight = customOpts.isBarricade ? 180 : 450;
+        const estMaxWidth = customOpts.isBarricade ? 200 : 270;
 
         let localX = x - rect.left;
         let localY = y - rect.top;
@@ -2243,17 +2273,16 @@ class UIManager {
                 this.render.hoverHexes = null;
                 this.render.previewBarricade = this.game.getBarricadePreview(col, row, this.barricadeOffset);
 
-                const cost = this.game.config ? (this.game.config.barricadeCost || 5) : 5;
-                const opts = [];
-                opts.push({
-                    label: `Confirm Barricade (-${cost} cr)`,
-                    onClick: () => {
+                const cost = this.game.config ? (this.game.config.barricadeCost || 10) : 10;
+                this.openContextMenu(e.clientX, e.clientY, col, row, [], {
+                    isBarricade: true,
+                    cost: cost,
+                    onConfirm: () => {
                         this.game.createBarricade(col, row, this.barricadeOffset);
                         this.resetActiveState();
                         this.updateHUD();
                     }
                 });
-                this.openContextMenu(e.clientX, e.clientY, col, row, opts);
             } else {
                 this.game.logSystem(`Invalid Barricade: ${barricadeCheck.reason}`);
             }
