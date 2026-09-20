@@ -99,6 +99,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         GLOBAL_NETWORK = new NetworkManager(game.hostId, myName);
 
                         window.onReceiveNetworkConfig = (remoteConfig) => {
+                            document.getElementById('victory-modal').classList.add('hidden');
                             document.getElementById('online-modal').classList.add('hidden');
                             uiLayer.classList.remove('hidden');
                             remoteConfig.redName = myName;
@@ -155,6 +156,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     window.restartCurrentGame = launchGame;
     function launchGame(overrideConfig = null) {
+        document.getElementById('victory-modal').classList.add('hidden');
         let config;
 
         if (overrideConfig) {
@@ -212,6 +214,13 @@ document.addEventListener('DOMContentLoaded', () => {
             GLOBAL_NETWORK.bindEngines(game, ui);
             ui.network = GLOBAL_NETWORK;
             game.network = GLOBAL_NETWORK;
+
+            if (GLOBAL_NETWORK.isHost && GLOBAL_NETWORK.connected) {
+                GLOBAL_NETWORK.sendData({
+                    type: 'CONFIG',
+                    config: config
+                });
+            }
         }
 
         if (GLOBAL_MODE === 'AI') {
