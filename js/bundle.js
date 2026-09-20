@@ -2771,7 +2771,7 @@ class AIBot {
     getValidMovesVirtual(state, unit) {
         let reachable = [];
         let queue = [{ c: unit.col, r: unit.row, dist: 0 }];
-        let visited = new Set([\`\${unit.col},\${unit.row}\`]);
+        let visited = new Set([`${unit.col},${unit.row}`]);
 
         while (queue.length > 0) {
             let curr = queue.shift();
@@ -2787,7 +2787,7 @@ class AIBot {
                 const nOff = hexMath.axialToOffset(nAx.q, nAx.r);
 
                 if (nOff.col >= 0 && nOff.row >= 0 && nOff.col < state.cols && nOff.row < state.rows) {
-                    const nKey = \`\${nOff.col},\${nOff.row}\`;
+                    const nKey = `${nOff.col},${nOff.row}`;
                     if (!visited.has(nKey) && !state.barricades.has(nKey)) {
                         let tOccupant = state.units.find(u => u.col === nOff.col && u.row === nOff.row);
                         let canEnter = !tOccupant || tOccupant.player !== unit.player;
@@ -2815,7 +2815,7 @@ class AIBot {
             const validDestinations = this.getValidMovesVirtual(state, u);
             for (let target of validDestinations) {
                 let targetUnit = state.units.find(un => un.col === target.col && un.row === target.row);
-                
+
                 // Attack
                 if (targetUnit && targetUnit.player !== player && targetUnit.type !== 'observation') {
                     actions.push({ type: 'MOVE', unitId: u.id, unitCol: u.col, unitRow: u.row, targetCol: target.col, targetRow: target.row });
@@ -2841,7 +2841,7 @@ class AIBot {
         // B. Deployments
         let emptyHomeTiles = [];
         for (let r = 0; r < state.rows; r++) {
-            if (!state.barricades.has(\`\${homeCol},\${r}\`) && !state.units.find(u => u.col === homeCol && u.row === r)) {
+            if (!state.barricades.has(`${homeCol},${r}`) && !state.units.find(u => u.col === homeCol && u.row === r)) {
                 emptyHomeTiles.push(r);
             }
         }
@@ -2852,15 +2852,15 @@ class AIBot {
                     // Reduce branching factor by just using generic spread for spawning if possible instead of all blanks
                     let rowsToTest = [];
                     if (emptyHomeTiles.length <= 3) rowsToTest = emptyHomeTiles;
-                    else rowsToTest = [emptyHomeTiles[0], emptyHomeTiles[Math.floor(emptyHomeTiles.length/2)], emptyHomeTiles[emptyHomeTiles.length - 1]];
-                    
+                    else rowsToTest = [emptyHomeTiles[0], emptyHomeTiles[Math.floor(emptyHomeTiles.length / 2)], emptyHomeTiles[emptyHomeTiles.length - 1]];
+
                     for (let hr of rowsToTest) {
                         actions.push({ type: 'DEPLOY', targetCol: homeCol, targetRow: hr, power: arch.power, speed: arch.speed, cost: arch.cost, archName: arch.name });
                     }
                 }
             }
         }
-        
+
         return actions;
     }
 
@@ -2872,7 +2872,7 @@ class AIBot {
             red_credits: state.red_credits,
             currentPlayer: state.currentPlayer === 'BLUE' ? 'RED' : 'BLUE',
             units: state.units.map(u => ({ ...u })),
-            barricades: state.barricades 
+            barricades: state.barricades
         };
 
         if (action.type === 'MOVE') {
@@ -2882,21 +2882,21 @@ class AIBot {
                 if (targetIdx !== -1) {
                     let defender = nextState.units[targetIdx];
                     if (u.power >= defender.power) {
-                        nextState.units.splice(targetIdx, 1); 
-                        u.power -= 1; 
+                        nextState.units.splice(targetIdx, 1);
+                        u.power -= 1;
                         // Note: exhaustion exact match for TPOW Engine
                         if (u.power <= 0) {
-                            nextState.units = nextState.units.filter(un => un !== u); 
+                            nextState.units = nextState.units.filter(un => un !== u);
                         }
                     } else {
-                        nextState.units = nextState.units.filter(un => un !== u); 
+                        nextState.units = nextState.units.filter(un => un !== u);
                         defender.power -= 1;
                         if (defender.power <= 0) {
                             nextState.units.splice(targetIdx, 1);
                         }
                     }
                 }
-                
+
                 if (nextState.units.find(un => un.col === action.unitCol && un.row === action.unitRow)) {
                     let match = nextState.units.find(un => un.col === action.unitCol && un.row === action.unitRow);
                     match.col = action.targetCol;
@@ -2908,7 +2908,7 @@ class AIBot {
             else nextState.red_credits -= action.cost;
 
             nextState.units.push({
-                id: \`spawn_\${Math.random()}\`,
+                id: `spawn_${Math.random()}`,
                 col: action.targetCol,
                 row: action.targetRow,
                 player: state.currentPlayer,
@@ -2976,7 +2976,7 @@ class AIBot {
 
     decideAction() {
         const rootState = this.cloneState();
-        
+
         // Depth 3 for standard alpha-beta pruning lookahead
         const result = this.minimax(rootState, 3, -Infinity, Infinity, true, 'RED');
 
