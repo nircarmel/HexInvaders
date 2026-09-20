@@ -319,9 +319,9 @@ export class RenderEngine {
                 if (this.visionHexes && !isHomeBase) {
                     const vis = this.visionHexes;
                     if (vis.inspect.has(key)) {
-                        fill = 'rgba(92, 82, 4, 0.5)';
+                        fill = 'rgba(16, 185, 129, 0.07)';
                     } else if (vis.spot.has(key)) {
-                        fill = 'rgba(48, 45, 8, 0.5)';
+                        fill = 'rgba(16, 185, 129, 0.03)';
                     }
                 }
 
