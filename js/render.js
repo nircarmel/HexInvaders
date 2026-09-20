@@ -314,14 +314,14 @@ export class RenderEngine {
                 if (col === this.game.cols - 1) fill = 'rgba(239, 68, 68, 0.45)'; // Brighter Red zone
 
                 // Map Overlay Shading Rules
-                if (this.game.overlayMode && this.game.overlayMode !== 'NONE') {
-                    const omaps = this.game.getOverlayMaps(this.game.overlayMode);
+                if (this.overlayMode && this.overlayMode !== 'NONE') {
+                    const omaps = this.game.getOverlayMaps(this.overlayMode);
                     if (omaps.go.has(key)) {
-                        fill = this.game.overlayMode === 'BLUE' ? 'rgba(30, 58, 138, 0.9)' : 'rgba(127, 29, 29, 0.9)';
+                        fill = this.overlayMode === 'BLUE' ? 'rgba(30, 58, 138, 0.9)' : 'rgba(127, 29, 29, 0.9)';
                     } else if (omaps.observe.has(key)) {
-                        fill = this.game.overlayMode === 'BLUE' ? 'rgba(30, 64, 175, 0.65)' : 'rgba(153, 27, 27, 0.65)';
+                        fill = this.overlayMode === 'BLUE' ? 'rgba(30, 64, 175, 0.65)' : 'rgba(153, 27, 27, 0.65)';
                     } else if (omaps.spot.has(key)) {
-                        fill = this.game.overlayMode === 'BLUE' ? 'rgba(37, 99, 235, 0.4)' : 'rgba(185, 28, 28, 0.4)';
+                        fill = this.overlayMode === 'BLUE' ? 'rgba(37, 99, 235, 0.4)' : 'rgba(185, 28, 28, 0.4)';
                     }
                 }
 

@@ -897,6 +897,19 @@ class HexGame {
         return false;
     }
 
+    getAllUnits(team) {
+        let list = [];
+        for (let col = 0; col < this.cols; col++) {
+            for (let row = 0; row < this.rows; row++) {
+                const t = this.getTile(col, row);
+                if (t && t.unit && t.unit.team === team) {
+                    list.push({ col, row, unit: t.unit });
+                }
+            }
+        }
+        return list;
+    }
+
     invalidateOverlayCache() {
         this.overlayCache = { 'BLUE': null, 'RED': null };
     }
@@ -1464,14 +1477,14 @@ class RenderEngine {
                 if (col === this.game.cols - 1) fill = 'rgba(239, 68, 68, 0.45)'; // Brighter Red zone
 
                 // Map Overlay Shading Rules
-                if (this.game.overlayMode && this.game.overlayMode !== 'NONE') {
-                    const omaps = this.game.getOverlayMaps(this.game.overlayMode);
+                if (this.overlayMode && this.overlayMode !== 'NONE') {
+                    const omaps = this.game.getOverlayMaps(this.overlayMode);
                     if (omaps.go.has(key)) {
-                        fill = this.game.overlayMode === 'BLUE' ? 'rgba(30, 58, 138, 0.9)' : 'rgba(127, 29, 29, 0.9)';
+                        fill = this.overlayMode === 'BLUE' ? 'rgba(30, 58, 138, 0.9)' : 'rgba(127, 29, 29, 0.9)';
                     } else if (omaps.observe.has(key)) {
-                        fill = this.game.overlayMode === 'BLUE' ? 'rgba(30, 64, 175, 0.65)' : 'rgba(153, 27, 27, 0.65)';
+                        fill = this.overlayMode === 'BLUE' ? 'rgba(30, 64, 175, 0.65)' : 'rgba(153, 27, 27, 0.65)';
                     } else if (omaps.spot.has(key)) {
-                        fill = this.game.overlayMode === 'BLUE' ? 'rgba(37, 99, 235, 0.4)' : 'rgba(185, 28, 28, 0.4)';
+                        fill = this.overlayMode === 'BLUE' ? 'rgba(37, 99, 235, 0.4)' : 'rgba(185, 28, 28, 0.4)';
                     }
                 }
 
@@ -1608,6 +1621,7 @@ class UIManager {
         this.input = input;
 
         this.currentAction = null; // 'MOVE', 'WAITING_MOVE'
+        this.overlayMode = 'NONE';
 
         this.bindEvents();
         this.updateHUD();
@@ -1723,7 +1737,8 @@ class UIManager {
         overlayRadios.forEach(radio => {
             radio.addEventListener('change', (e) => {
                 if (e.target.checked) {
-                    this.game.overlayMode = e.target.value;
+                    this.overlayMode = e.target.value;
+                    this.render.overlayMode = e.target.value;
                 }
             });
         });
@@ -1824,7 +1839,8 @@ class UIManager {
                 this.unitTooltip.classList.remove('hidden');
 
                 // Position relative to local canvas bounds
-                const rect = this.canvas.getBoundingClientRect();
+                const canvasEl = document.getElementById('gameCanvas');
+                const rect = canvasEl.getBoundingClientRect();
                 this.unitTooltip.style.left = `${e.clientX - rect.left}px`;
                 this.unitTooltip.style.top = `${e.clientY - rect.top - 20}px`;
                 return;

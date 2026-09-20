@@ -8,6 +8,7 @@ export class UIManager {
         this.input = input;
 
         this.currentAction = null; // 'MOVE', 'WAITING_MOVE'
+        this.overlayMode = 'NONE';
 
         this.bindEvents();
         this.updateHUD();
@@ -123,7 +124,8 @@ export class UIManager {
         overlayRadios.forEach(radio => {
             radio.addEventListener('change', (e) => {
                 if (e.target.checked) {
-                    this.game.overlayMode = e.target.value;
+                    this.overlayMode = e.target.value;
+                    this.render.overlayMode = e.target.value;
                 }
             });
         });
@@ -224,7 +226,8 @@ export class UIManager {
                 this.unitTooltip.classList.remove('hidden');
 
                 // Position relative to local canvas bounds
-                const rect = this.canvas.getBoundingClientRect();
+                const canvasEl = document.getElementById('gameCanvas');
+                const rect = canvasEl.getBoundingClientRect();
                 this.unitTooltip.style.left = `${e.clientX - rect.left}px`;
                 this.unitTooltip.style.top = `${e.clientY - rect.top - 20}px`;
                 return;

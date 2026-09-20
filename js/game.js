@@ -732,6 +732,19 @@ export class HexGame {
         return false;
     }
 
+    getAllUnits(team) {
+        let list = [];
+        for (let col = 0; col < this.cols; col++) {
+            for (let row = 0; row < this.rows; row++) {
+                const t = this.getTile(col, row);
+                if (t && t.unit && t.unit.team === team) {
+                    list.push({ col, row, unit: t.unit });
+                }
+            }
+        }
+        return list;
+    }
+
     invalidateOverlayCache() {
         this.overlayCache = { 'BLUE': null, 'RED': null };
     }
