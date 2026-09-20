@@ -1,0 +1,10 @@
+isGameOver initially: true
+history length: 3
+last snapshot winner: BLUE
+Fog of war before loadSnapshot: false
+Can see unit before loadSnapshot: true
+--- AFTER SCRUBBING TO TURN 0 ---
+isGameOver after loadSnapshot(0): true
+last snapshot winner after loadSnapshot(0): BLUE
+Fog of war after loadSnapshot: false
+Can see unit after loadSnapshot: true

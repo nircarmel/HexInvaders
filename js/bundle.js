@@ -1003,6 +1003,7 @@ class HexGame {
         this.winner = team;
         const winName = team === 'BLUE' ? this.blueName : this.redName;
         this.logSystem(`GAME OVER. ${winName} wins! ${reason}`);
+        this.saveSnapshot();
         if (this.onWinner) this.onWinner(team, reason);
     }
 }
