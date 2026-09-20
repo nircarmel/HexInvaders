@@ -9,6 +9,7 @@ export class UIManager {
 
         this.currentAction = null; // 'MOVE', 'WAITING_MOVE'
         this.overlayMode = 'NONE';
+        this.playerOverlayPrefs = { 'BLUE': 'NONE', 'RED': 'NONE' };
 
         this.bindEvents();
         this.updateHUD();
@@ -29,6 +30,14 @@ export class UIManager {
             this.render.validPath = null;
             this.closeContextMenu();
             this.updateHUD();
+
+            // Auto-restore overlay memory config specific to the Active player's previous choice
+            const pref = this.playerOverlayPrefs[this.game.activeTeam];
+            this.overlayMode = pref;
+            this.render.overlayMode = pref;
+
+            const matchingRadio = document.querySelector(`input[name="overlayToggle"][value="${pref}"]`);
+            if (matchingRadio) matchingRadio.checked = true;
         };
         this.game.onWinner = (team, reason) => this.showVictory(team, reason);
     }
@@ -126,6 +135,7 @@ export class UIManager {
                 if (e.target.checked) {
                     this.overlayMode = e.target.value;
                     this.render.overlayMode = e.target.value;
+                    this.playerOverlayPrefs[this.game.activeTeam] = e.target.value;
                 }
             });
         });
