@@ -2108,6 +2108,8 @@ class UIManager {
 
             this.currentAction = 'WAITING_MOVE';
             this.game.selectedTile = key;
+            this.render.hoverHexes = null;
+            this.render.visionHexes = null;
             this.render.highlightHexes = this.game.getReachableHexes(col, row, this.game.activeTeam, tile.unit.speed);
         } else if (!tile.unit && !tile.isBarricade) {
             // EMPTY TILE: check if it's our deploy baseline
