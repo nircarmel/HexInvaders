@@ -47,7 +47,6 @@ export class InputController {
 
                     this.render.camera.x += dx;
                     this.render.camera.y += dy;
-                    this.render.requestRender();
                 }
             } else {
                 this.handleHover(e);
@@ -76,7 +75,6 @@ export class InputController {
             this.isLeftDown = false;
             this.isDragging = false;
             this.render.hoveredHex = null;
-            this.render.requestRender();
         });
 
         // Enable Map Zooming logic
@@ -102,8 +100,6 @@ export class InputController {
             // Adjust camera so that the exact world position remains permanently locked under the mouse
             this.render.camera.x = mouseX - pt.worldX * this.render.camera.zoom;
             this.render.camera.y = mouseY - pt.worldY * this.render.camera.zoom;
-
-            this.render.requestRender();
         });
     }
 
@@ -127,8 +123,6 @@ export class InputController {
         } else {
             this.render.hoveredHex = null;
         }
-
-        this.render.requestRender();
     }
 
     handleClick(e, isRightClick) {

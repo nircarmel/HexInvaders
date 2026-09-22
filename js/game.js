@@ -698,7 +698,7 @@ export class HexGame {
     }
 
     canSeeUnit(targetCol, targetRow, perspectiveTeam) {
-        if (this.isGameOver) return true;
+        if (this.isGameOver || this.config.mode === 'VISIBLE') return true;
 
         // Collect all units for the perspective team
         const myUnits = [];
