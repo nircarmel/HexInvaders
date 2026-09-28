@@ -548,6 +548,9 @@ class HexGame {
         let currC = startCol;
         let currR = startRow;
 
+        let collisionC = startCol;
+        let collisionR = startRow;
+
         let survived = true;
         // Travel the path (index 1 to end, skipping start)
         for (let i = 1; i < path.length; i++) {
@@ -574,14 +577,20 @@ class HexGame {
 
                 if (attackerWins) {
                     this.logAction(u.team, `Combat: ${u.strength} Power defeated ${defender.strength} Power at [${trgC},${trgR}].`, true);
+                    targetTile.pendingDeathVisual = { ...defender };
                     targetTile.unit = null;
 
                     if (this.config.powerMode === 'DEPLETING' && !defender.isFlag && !u.isFlag) {
                         u.strength--;
                         if (u.strength <= 0) {
                             survived = false;
+                            this.getTile(currC, currR).pendingDeathVisual = { ...u };
                             this.getTile(currC, currR).unit = null;
                             this.logAction(u.team, `Combat: ${u.team} unit succumbed to exhaustion after battle at [${trgC},${trgR}].`, true);
+                            this.activeCombats.push({ c: currC, r: currR });
+                            if (this.onCombat) this.onCombat(currC, currR);
+                            collisionC = trgC;
+                            collisionR = trgR;
                             break;
                         }
                     }
@@ -589,13 +598,21 @@ class HexGame {
                 } else {
                     this.logAction(u.team, `Combat: ${u.strength} Power died attacking ${defender.strength} Power at [${trgC},${trgR}].`, true);
                     survived = false;
+                    this.getTile(currC, currR).pendingDeathVisual = { ...u };
                     this.getTile(currC, currR).unit = null; // attacker dead, erase from current step
+                    this.activeCombats.push({ c: currC, r: currR });
+                    if (this.onCombat) this.onCombat(currC, currR);
+                    collisionC = trgC;
+                    collisionR = trgR;
 
                     if (this.config.powerMode === 'DEPLETING' && !defender.isFlag && !u.isFlag) {
                         defender.strength--;
                         if (defender.strength <= 0) {
+                            targetTile.pendingDeathVisual = { ...defender };
                             targetTile.unit = null;
                             this.logAction(defender.team, `Combat: ${defender.team} defender succumbed to exhaustion after battle at [${trgC},${trgR}].`, true);
+                            this.activeCombats.push({ c: trgC, r: trgR });
+                            if (this.onCombat) this.onCombat(trgC, trgR);
                         } else {
                             defender.exposedCounter = 2; // Defender survived and is visibly exposed
                         }
@@ -616,14 +633,15 @@ class HexGame {
             currR = trgR;
         }
 
-        if (currC !== startCol || currR !== startRow) {
-            this.lastMove = { sC: startCol, sR: startRow, eC: currC, eR: currR, unit: { ...u } };
+        let endC = survived ? currC : collisionC;
+        let endR = survived ? currR : collisionR;
+
+        if (endC !== startCol || endR !== startRow) {
+            this.lastMove = { sC: startCol, sR: startRow, eC: endC, eR: endR, unit: { ...u } };
             if (this.ui && this.ui.render) {
                 const trgt = survived ? this.getTile(currC, currR).unit : null;
-                this.ui.render.addMoveAnimation(startCol, startRow, currC, currR, { ...u }, 500, trgt);
+                this.ui.render.addMoveAnimation(startCol, startRow, endC, endR, { ...u }, 500, trgt);
             }
-        } else if (!survived) {
-            this.lastMove = { sC: startCol, sR: startRow, eC: currC, eR: currR, unit: { ...u } };
         }
 
         this.actionUsed = true;
@@ -832,14 +850,15 @@ class HexGame {
         if (this.config.mode === 'VISIBLE' || this.isGameOver) return false;
 
         const tile = this.getTile(col, row);
-        if (!tile || !tile.unit) return false;
+        const checkUnit = tile ? (tile.unit || tile.pendingDeathVisual) : null;
+        if (!tile || !checkUnit) return false;
 
-        const isEnemy = tile.unit.team !== perspective;
+        const isEnemy = checkUnit.team !== perspective;
         if (!isEnemy) return false;
 
-        if (tile.unit.type === 'observation') return false;
+        if (checkUnit.type === 'observation') return false;
 
-        if (tile.unit.exposedCounter && tile.unit.exposedCounter > 0) return false;
+        if (checkUnit.exposedCounter && checkUnit.exposedCounter > 0) return false;
 
         if (this.config.mode === 'HIDDEN') return true;
 
@@ -870,8 +889,9 @@ class HexGame {
         for (let col = 0; col < this.cols; col++) {
             for (let row = 0; row < this.rows; row++) {
                 const t = this.getTile(col, row);
-                if (t.unit && t.unit.team === perspectiveTeam) {
-                    myUnits.push({ col, row, type: t.unit.type });
+                const checkUnit = t ? (t.unit || t.pendingDeathVisual) : null;
+                if (checkUnit && checkUnit.team === perspectiveTeam) {
+                    myUnits.push({ col, row, type: checkUnit.type });
                 }
             }
         }
@@ -1213,6 +1233,51 @@ class RenderEngine {
         requestAnimationFrame(() => this.drawLoop());
     }
 
+    getMeshPattern() {
+        if (this._meshPattern) return this._meshPattern;
+
+        // Brick Wall Texture configuration
+        const pCanvas = document.createElement('canvas');
+        pCanvas.width = 30;
+        pCanvas.height = 16;
+        const pCtx = pCanvas.getContext('2d');
+
+        // Match empty void baseline mathematically
+        pCtx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+        pCtx.fillRect(0, 0, 30, 16);
+
+        // Draw brick mortar lines perfectly crisp natively using 0.5px translation boundaries
+        pCtx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+        pCtx.lineWidth = 1;
+
+        // Horizontal mortar strokes seamlessly delineating rows
+        pCtx.beginPath();
+        pCtx.moveTo(0, 8.5);
+        pCtx.lineTo(30, 8.5);
+        pCtx.stroke();
+
+        pCtx.beginPath();
+        pCtx.moveTo(0, 0.5);
+        pCtx.lineTo(30, 0.5);
+        pCtx.stroke();
+
+        // Vertical mortar staggered joints mapped for seamless masonry
+        // Row 1 (y: 0 to 8) centered joint
+        pCtx.beginPath();
+        pCtx.moveTo(15.5, 0);
+        pCtx.lineTo(15.5, 8.5);
+        pCtx.stroke();
+
+        // Row 2 (y: 8 to 16) boundary joint
+        pCtx.beginPath();
+        pCtx.moveTo(0.5, 8.5);
+        pCtx.lineTo(0.5, 16);
+        pCtx.stroke();
+
+        this._meshPattern = this.ctx.createPattern(pCanvas, 'repeat');
+        return this._meshPattern;
+    }
+
     resize() {
         const boardFrame = document.getElementById('board-frame');
         if (boardFrame) {
@@ -1239,6 +1304,12 @@ class RenderEngine {
         document.body.appendChild(img);
 
         this.explosions.push({ col, row, time: Date.now(), el: img });
+
+        // Cleanup pending death units attached to this tile visually
+        let t = this.game.getTile(col, row);
+        if (t && t.pendingDeathVisual) {
+            t.pendingDeathVisual = null;
+        }
     }
 
     addMoveAnimation(sC, sR, eC, eR, unit, duration, physicalBoardTarget) {
@@ -1312,6 +1383,24 @@ class RenderEngine {
             this.ctx.strokeStyle = strokeColor;
             this.ctx.stroke();
         }
+    }
+
+    drawHexSegment(x, y, radius, strokeColor, lineWidth = 1, i) {
+        this.ctx.beginPath();
+        const angle_rad1 = (Math.PI / 180) * (60 * i);
+        const angle_rad2 = (Math.PI / 180) * (60 * (i + 1));
+
+        let x1 = x + radius * Math.cos(angle_rad1);
+        let y1 = y + radius * Math.sin(angle_rad1);
+        let x2 = x + radius * Math.cos(angle_rad2);
+        let y2 = y + radius * Math.sin(angle_rad2);
+
+        this.ctx.moveTo(x1, y1);
+        this.ctx.lineTo(x2, y2);
+
+        this.ctx.strokeStyle = strokeColor;
+        this.ctx.lineWidth = lineWidth;
+        this.ctx.stroke();
     }
 
     drawUnit(x, y, col, row, unit) {
@@ -1429,6 +1518,21 @@ class RenderEngine {
             }
         }
     }
+    getThreatColor(norm) {
+        let r, g, b;
+        if (norm <= 0.5) {
+            let t = norm * 2;
+            r = Math.round(26 + (136 - 26) * t);
+            g = Math.round(26 + (119 - 26) * t);
+            b = Math.round(10 + (0 - 10) * t);
+        } else {
+            let t = (norm - 0.5) * 2;
+            r = Math.round(136 + (255 - 136) * t);
+            g = Math.round(119 + (221 - 119) * t);
+            b = 0;
+        }
+        return `rgba(${r}, ${g}, ${b}, 0.6)`;
+    }
 
     drawLoop() {
         // Auto-correct any flexbox asynchronous geometry updates stretching CSS
@@ -1479,6 +1583,105 @@ class RenderEngine {
         }
         this.ctx.stroke();
 
+        // Dynamically compute UX Threat Map Overlays natively via Asymmetric HUD configuration
+        let showRedMove = false;
+        let showBlueMove = false;
+
+        let team = this.game.activeTeam;
+        if (team === 'BLUE') {
+            let bR = document.getElementById('chk-blue-cfg-red');
+            let bB = document.getElementById('chk-blue-cfg-blue');
+            showRedMove = bR ? bR.checked : false;
+            showBlueMove = bB ? bB.checked : false;
+        } else if (team === 'RED') {
+            let rR = document.getElementById('chk-red-cfg-red');
+            let rB = document.getElementById('chk-red-cfg-blue');
+            showRedMove = rR ? rR.checked : false;
+            showBlueMove = rB ? rB.checked : false;
+        }
+        let blueThreat = new Set();
+        let redThreat = new Set();
+        let blueThreatUncertain = new Set();
+        let redThreatUncertain = new Set();
+
+        if (showRedMove || showBlueMove) {
+            for (let cols = 0; cols < this.game.cols; cols++) {
+                for (let rows = 0; rows < this.game.rows; rows++) {
+                    let tileData = this.game.getTile(cols, rows);
+                    if (!tileData || !tileData.unit) continue;
+
+                    let u = tileData.unit;
+                    if (u.type === 'observation' || u.isFlag) continue;
+
+                    let isCompletelyHidden = (u.team !== this.game.activeTeam && u.player !== this.game.activeTeam) && !this.game.canSeeUnit(cols, rows, this.game.activeTeam);
+                    if (isCompletelyHidden) continue;
+
+                    let hideStats = this.game.getFogOfWar(cols, rows, this.game.activeTeam);
+
+                    let isRed = u.team === 'RED' || u.player === 'RED';
+                    if (isRed && !showRedMove) continue;
+                    if (!isRed && !showBlueMove) continue;
+
+                    let speed = hideStats ? (this.game.config.maxSpeed || 5) : (u.speed || 1);
+
+                    // Use local fast BFS to respect Barricade boundaries natively
+                    let queue = [{ c: cols, r: rows, dist: 0 }];
+                    let visited = new Set([`${cols},${rows}`]);
+
+                    while (queue.length > 0) {
+                        let curr = queue.shift();
+
+                        let k = `${curr.c},${curr.r}`;
+
+                        // Threat registration applies organically
+                        if (hideStats) {
+                            if (isRed) redThreatUncertain.add(k);
+                            else blueThreatUncertain.add(k);
+                        } else {
+                            if (isRed) redThreat.add(k);
+                            else blueThreat.add(k);
+                        }
+
+                        if (curr.dist >= speed) continue;
+
+                        // If this tile holds an enemy, movement stops here
+                        let currTileObj = this.game.getTile(curr.c, curr.r);
+                        if (curr.dist > 0 && currTileObj && currTileObj.unit && currTileObj.unit.team !== u.team) {
+                            continue;
+                        }
+
+                        let ax = hexMath.offsetToAxial(curr.c, curr.r);
+                        for (let dir of hexMath.hexDirections) {
+                            let nAx = { q: ax.q + dir.dq, r: ax.r + dir.dr };
+                            let nOff = hexMath.axialToOffset(nAx.q, nAx.r);
+
+                            if (nOff.col >= 0 && nOff.row >= 0 && nOff.col < this.game.cols && nOff.row < this.game.rows) {
+                                let nKey = `${nOff.col},${nOff.row}`;
+                                let destTile = this.game.getTile(nOff.col, nOff.row);
+                                let dBlock = destTile ? destTile.isBarricade : false;
+
+                                if (!visited.has(nKey) && !dBlock) {
+                                    // You cannot step ON a friendly unit, but you can pass THROUGH them? No, Hex-Invaders doesn't allow passing strictly.
+                                    let dUnit = destTile ? destTile.unit : null;
+                                    let blockedByFriendly = dUnit && dUnit.team === u.team;
+
+                                    if (!blockedByFriendly) {
+                                        visited.add(nKey);
+                                        queue.push({ c: nOff.col, r: nOff.row, dist: curr.dist + 1 });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let aiTreeKeys = null;
+        if (this.game.ui && this.game.ui.showAIActionTree && this.game.aiActionTreeCache) {
+            aiTreeKeys = this.game.aiActionTreeCache.map(c => `${c.col},${c.row}`);
+        }
+
         // Draw board base
         for (let col = 0; col < this.game.cols; col++) {
             for (let row = 0; row < this.game.rows; row++) {
@@ -1486,7 +1689,7 @@ class RenderEngine {
                 const key = `${col},${row}`;
                 const tile = this.game.getTile(col, row);
 
-                let fill = 'rgba(255,255,255,0.015)';
+                let fill = 'rgba(0,0,0,0.2)'; // Faint black overlay dims empty tiles explicitly against background
                 let stroke = 'rgba(255,255,255,0.1)';
                 let lineWidth = 1;
 
@@ -1496,20 +1699,60 @@ class RenderEngine {
                 if (col === 0) fill = 'rgba(59, 130, 246, 0.3)'; // Brighter Blue zone
                 if (col === this.game.cols - 1) fill = 'rgba(239, 68, 68, 0.3)'; // Brighter Red zone
 
+                // Threat Map Overlays (Calculated natively based on Fog of War)
+                if (!isHomeBase) {
+                    let rT = redThreat.has(key);
+                    let bT = blueThreat.has(key);
+
+                    let rTU = !rT && redThreatUncertain.has(key);
+                    let bTU = !bT && blueThreatUncertain.has(key);
+
+                    if (rT || bT || rTU || bTU) {
+                        let pulse = (Math.sin(Date.now() / 300) + 1) / 2;
+
+                        let wR = rT ? 1 : (rTU ? pulse : 0);
+                        let wB = bT ? 1 : (bTU ? pulse : 0);
+
+                        let totalW = wR + wB;
+                        if (totalW > 0) {
+                            let pctR = wR / totalW;
+                            let pctB = wB / totalW;
+
+                            // Severely darken the absolute max luminosity so it reads as a 'dark' hint rather than a neon grid natively
+                            let R = Math.floor(pctR * 210);
+                            let B = Math.floor(pctB * 210);
+
+                            // Base standard threat projection is 0.10 (subtle faint). 
+                            // Strongest overlap intersection maximizes at 0.15.
+                            let minW = Math.min(wR, wB);
+                            let maxW = Math.max(wR, wB);
+                            let finalAlpha = (0.10 * maxW) + (0.05 * minW);
+
+                            fill = `rgba(${R}, 0, ${B}, ${finalAlpha.toFixed(3)})`;
+                        }
+                    }
+                }
+
                 // Unit Hover Vision Rules
                 if (this.visionHexes && !isHomeBase) {
-                    const vis = this.visionHexes;
-                    if (vis.inspect.has(key)) {
-                        fill = 'rgba(16, 185, 129, 0.16)';
-                    } else if (vis.spot.has(key)) {
-                        fill = 'rgba(16, 185, 129, 0.10)';
+                    let isReachable = this.hoverHexes && (this.hoverHexes.includes(key) || key === this.hoveredHex);
+
+                    if (!isReachable) {
+                        const vis = this.visionHexes;
+                        if (vis.inspect.has(key)) {
+                            // Inspect: Brighter translucent gray (0.08 alpha pure white over dark background)
+                            fill = 'rgba(255, 255, 255, 0.08)';
+                        } else if (vis.spot.has(key)) {
+                            // Spot: Darker translucent gray (0.04 alpha pure white over dark background)
+                            fill = 'rgba(255, 255, 255, 0.04)';
+                        }
                     }
                 }
 
                 // Barricade styling
                 if (tile.isBarricade) {
-                    fill = '#2a2a2a'; // unmistakably neutral dark gray
-                    stroke = '#555555';
+                    fill = this.getMeshPattern(); // Replaces solid black with transparent mesh
+                    stroke = '#e2e8f0'; // bright gray, almost white
                     lineWidth = 2;
                 }
 
@@ -1531,9 +1774,9 @@ class RenderEngine {
                         fill = 'rgba(16, 185, 129, 0.2)';
                     }
                 } else if (this.highlightHexes && this.highlightHexes.includes(key) && !isHomeBase) {
-                    fill = 'rgba(16, 185, 129, 0.22)'; // Subtle green for reachable
+                    // Replaced fill logic with outer perimeter segments rendered later.
                 } else if (this.hoverHexes && this.hoverHexes.includes(key) && !isHomeBase) {
-                    fill = this.hoverHexesColor || 'rgba(16, 185, 129, 0.22)'; // Render the specific team color during hover
+                    // Replaced fill logic with outer perimeter segments rendered later.
                 } else if (this.previewBarricade && this.previewBarricade.includes(key)) {
                     if (this.game.activeTeam === 'BLUE') {
                         fill = 'rgba(59, 130, 246, 0.4)';
@@ -1545,11 +1788,104 @@ class RenderEngine {
                     lineWidth = 2;
                 }
 
+                let isBlueRange = this.game.blueRangeHexes && this.game.blueRangeHexes.has(key);
+                let isRedRange = this.game.redRangeHexes && this.game.redRangeHexes.has(key);
+
+                if (isBlueRange && isRedRange) {
+                    fill = 'rgba(168, 85, 247, 0.4)'; // Purple
+                } else if (isBlueRange) {
+                    fill = 'rgba(59, 130, 246, 0.3)';
+                } else if (isRedRange) {
+                    fill = 'rgba(239, 68, 68, 0.3)';
+                }
+
+                if (this.game.ui && this.game.ui.showAIHeatmap && this.game.aiHeatmapCache) {
+                    let hm = this.game.aiHeatmapCache.find(h => h.col === col && h.row === row);
+                    if (hm) {
+                        if (hm.occupied) {
+                            fill = hm.val > 0 ? 'rgba(59, 130, 246, 0.4)' : 'rgba(239, 68, 68, 0.4)';
+                        } else {
+                            fill = this.getThreatColor(hm.norm);
+                        }
+                    }
+                } else if (this.game.ui && this.game.ui.showAIActionTree && this.game.aiActionTreeCache) {
+                    let ev = this.game.aiActionTreeCache.find(e => e.col === col && e.row === row);
+                    if (ev) {
+                        fill = this.getThreatColor(ev.norm);
+                    }
+                }
                 this.drawHex(pt.x, pt.y, this.hexRadius - 1, fill, stroke, lineWidth);
 
+                // Draw perimeter strokes for reachable zones natively 
+                let isHoverReach = this.hoverHexes && (this.hoverHexes.includes(key) || key === this.hoveredHex);
+                let isSelectReach = this.highlightHexes && (this.highlightHexes.includes(key) || key === this.game.selectedTile);
+                let isAiReach = aiTreeKeys && aiTreeKeys.includes(key);
+
+                if ((isHoverReach && this.hoverHexes && this.hoverHexes.length > 0) ||
+                    (isSelectReach && this.highlightHexes && this.highlightHexes.length > 0) ||
+                    (isAiReach)) {
+
+                    let perimeterGroup;
+                    let perimeterColor;
+                    let rootTile;
+                    if (isAiReach) {
+                        perimeterGroup = aiTreeKeys;
+                        perimeterColor = 'rgba(251, 191, 36, 1.0)';
+                        rootTile = null;
+                    } else if (isSelectReach) {
+                        perimeterGroup = this.highlightHexes;
+                        perimeterColor = this.highlightHexesColor;
+                        rootTile = this.game.selectedTile;
+                    } else {
+                        perimeterGroup = this.hoverHexes;
+                        perimeterColor = this.hoverHexesColor;
+                        rootTile = this.hoveredHex;
+                    }
+
+                    // Thicker stroke for maximum perimeter visibility matching the threat alpha implicitly
+                    let pStroke = perimeterColor;
+
+                    if (perimeterColor) {
+                        // Extract rgba to explicitly mutate the physical coordinates dynamically
+                        let m = perimeterColor.match(/rgba\((\d+),\s*(\d+),\s*(\d+),/);
+                        if (m) {
+                            let r = parseInt(m[1]);
+                            let g = parseInt(m[2]);
+                            let b = parseInt(m[3]);
+
+                            // Mathematically shift the base Red/Blue strictly 40% towards pure white
+                            // ensuring the topological bounds explicitly detach from identically colored UI matrices
+                            r = Math.min(255, Math.floor(r + (255 - r) * 0.4));
+                            g = Math.min(255, Math.floor(g + (255 - g) * 0.4));
+                            b = Math.min(255, Math.floor(b + (255 - b) * 0.4));
+
+                            pStroke = `rgba(${r}, ${g}, ${b}, 0.95)`;
+                        }
+                    }
+
+                    const ax = hexMath.offsetToAxial(col, row);
+                    for (let d = 0; d < 6; d++) {
+                        let dir = hexMath.hexDirections[d];
+                        const nAx = { q: ax.q + dir.dq, r: ax.r + dir.dr };
+                        const nOff = hexMath.axialToOffset(nAx.q, nAx.r);
+                        let nKey = `${nOff.col},${nOff.row}`;
+
+                        // If neighbor is NOT in the reach set and is NOT the root tile itself, draw an edge mapping!
+                        if (!perimeterGroup.includes(nKey) && nKey !== rootTile) {
+                            let segI = (6 - d) % 6; // Geometrically correct polar to axial edge inversion mapping
+                            this.drawHexSegment(pt.x, pt.y, this.hexRadius - 1, pStroke, 3.5, segI);
+                        }
+                    }
+                }
+
                 // Draw Unit
-                if (tile.unit && !tile.unit.isAnimating) {
-                    this.drawUnit(pt.x, pt.y, col, row, tile.unit);
+                let baseUnit = tile ? tile.unit : null;
+                if (!baseUnit && tile && tile.pendingDeathVisual) {
+                    baseUnit = tile.pendingDeathVisual;
+                }
+
+                if (baseUnit && !baseUnit.isAnimating) {
+                    this.drawUnit(pt.x, pt.y, col, row, baseUnit);
                 }
             }
         }
@@ -1614,6 +1950,27 @@ class RenderEngine {
                     a.physicalBoardTarget.isAnimating = false;
                 }
                 this.moveAnimations.splice(i, 1);
+            }
+        }
+
+        // --- DRAW ACTION TREE ---
+        if (this.game.ui && this.game.ui.showAIActionTree && this.game.aiActionTreeCache) {
+            let evals = this.game.aiActionTreeCache;
+            let maxVal = evals.length > 0 ? Math.max(...evals.map(e => e.val)) : 0;
+
+            for (let ev of evals) {
+                let targetPt = hexMath.hexToPixel(ev.col, ev.row, this.hexRadius, this.ox, this.oy);
+                let roundedVal = Math.round(ev.val);
+                let scoreTxt = (roundedVal > 0 ? '+' : '') + roundedVal.toLocaleString();
+
+                let isMax = ev.val === maxVal;
+                this.ctx.font = 'bold ' + (isMax ? '18px' : '14px') + ' Inter, sans-serif';
+                this.ctx.fillStyle = isMax ? '#fbbf24' : '#fff';
+                this.ctx.shadowColor = 'black';
+                this.ctx.shadowBlur = 4;
+                this.ctx.textAlign = 'center';
+                this.ctx.fillText(scoreTxt, targetPt.x, targetPt.y + 6);
+                this.ctx.shadowBlur = 0;
             }
         }
 
@@ -1703,6 +2060,42 @@ class UIManager {
             btnHelp.addEventListener('touchend', hideHelp);
         }
 
+        // Map AI insight visual flags natively
+        this.showAIActionTree = false;
+        this.showAIHeatmap = false;
+
+        const btnAiTree = document.getElementById('btn-ai-action-tree');
+        if (btnAiTree) {
+            btnAiTree.addEventListener('mousedown', () => {
+                if (this.game.aiBot) this.game.aiActionTreeCache = this.game.aiBot.generateActionTreeValues(this.game.aiBot.cloneState(), 'RED');
+                this.showAIActionTree = true;
+            });
+            btnAiTree.addEventListener('mouseup', () => { this.showAIActionTree = false; });
+            btnAiTree.addEventListener('mouseleave', () => { this.showAIActionTree = false; });
+            btnAiTree.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                if (this.game.aiBot) this.game.aiActionTreeCache = this.game.aiBot.generateActionTreeValues(this.game.aiBot.cloneState(), 'RED');
+                this.showAIActionTree = true;
+            });
+            btnAiTree.addEventListener('touchend', (e) => { e.preventDefault(); this.showAIActionTree = false; });
+        }
+
+        const btnAiHeatmap = document.getElementById('btn-ai-heatmap');
+        if (btnAiHeatmap) {
+            btnAiHeatmap.addEventListener('mousedown', () => {
+                if (this.game.aiBot) this.game.aiHeatmapCache = this.game.aiBot.generateHeatmap(this.game.aiBot.cloneState(), 'RED');
+                this.showAIHeatmap = true;
+            });
+            btnAiHeatmap.addEventListener('mouseup', () => { this.showAIHeatmap = false; });
+            btnAiHeatmap.addEventListener('mouseleave', () => { this.showAIHeatmap = false; });
+            btnAiHeatmap.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                if (this.game.aiBot) this.game.aiHeatmapCache = this.game.aiBot.generateHeatmap(this.game.aiBot.cloneState(), 'RED');
+                this.showAIHeatmap = true;
+            });
+            btnAiHeatmap.addEventListener('touchend', (e) => { e.preventDefault(); this.showAIHeatmap = false; });
+        }
+
         // History Controls
         document.getElementById('btn-hist-prev').addEventListener('click', () => {
             let idx = this.game.historyIndex - 1;
@@ -1777,6 +2170,9 @@ class UIManager {
         this.barricadeOffset = undefined;
         window.addEventListener('wheel', (e) => {
             if (this.currentAction === 'WAITING_BARRICADE' && this.game.selectedTile) {
+                e.preventDefault();
+                e.stopPropagation(); // Prevent input.js from zooming the canvas
+
                 const s = this.game.selectedTile.split(',');
                 const col = parseInt(s[0]);
                 const row = parseInt(s[1]);
@@ -1799,7 +2195,7 @@ class UIManager {
                     this.render.previewBarricade = this.game.getBarricadePreview(col, row, this.barricadeOffset);
                 }
             }
-        });
+        }, { capture: true });
     }
 
     updateTooltip(e) {
@@ -1842,7 +2238,7 @@ class UIManager {
             if (!hideStats) {
                 if (!this.game.selectedTile && !this._contextTarget) {
                     this.render.hoverHexes = this.game.getReachableHexes(col, row, tile.unit.team, tile.unit.speed);
-                    this.render.hoverHexesColor = 'rgba(16, 185, 129, 0.22)';
+                    this.render.hoverHexesColor = tile.unit.team === 'BLUE' ? 'rgba(59, 130, 246, 0.120)' : 'rgba(239, 68, 68, 0.120)';
                 }
 
                 document.getElementById('tt-str').innerText = tile.unit.strength;
@@ -1950,15 +2346,40 @@ class UIManager {
     updateHUD() {
         if (!this.topPanelInitialized && this.game.config) {
             this.topPanelInitialized = true;
-            document.getElementById('info-mode').innerText = this.game.config.type === 'PLANT' ? 'Plant Flag' : 'Invade';
 
-            const vString = {
-                'HIDDEN': 'Your Units',
-                'NEARBY': 'Nearby Units',
-                'VISIBLE': 'All Units'
+            // Mode Value and Tooltip
+            let modeEl = document.getElementById('info-mode');
+            if (this.game.config.type === 'PLANT') {
+                modeEl.innerText = 'Plant Flag';
+                modeEl.title = "First player to reach the enemy home with a FLAG UNIT wins.";
+            } else {
+                modeEl.innerText = 'Invade';
+                modeEl.title = "First player to reach the enemy home with ANY UNIT wins.";
+            }
+            modeEl.style.cursor = 'help';
+
+            // Visibility Value and Tooltip
+            let visEl = document.getElementById('info-vis');
+            let visData = {
+                'HIDDEN': { text: 'Your Units', title: 'Speed and Power are visible only for your units.' },
+                'NEARBY': { text: 'Nearby Units', title: 'Speed and Power are visible for units within move range + 1.' },
+                'VISIBLE': { text: 'All Units', title: 'Speed and Power are visible for all units.' }
             };
-            document.getElementById('info-vis').innerText = vString[this.game.config.mode] || 'Unknown';
-            document.getElementById('info-power').innerText = this.game.config.powerMode === 'DEPLETING' ? 'Depleting' : 'Constant';
+            let v = visData[this.game.config.mode] || { text: 'Unknown', title: '' };
+            visEl.innerText = v.text;
+            visEl.title = v.title;
+            visEl.style.cursor = 'help';
+
+            // Power Value and Tooltip
+            let pwrEl = document.getElementById('info-power');
+            if (this.game.config.powerMode === 'DEPLETING') {
+                pwrEl.innerText = 'Depleting';
+                pwrEl.title = "Units lose 1 Power point after each fight.";
+            } else {
+                pwrEl.innerText = 'Constant';
+                pwrEl.title = "Units keep their Power value for the whole game.";
+            }
+            pwrEl.style.cursor = 'help';
         }
 
         const bNamePlate = document.getElementById('blue-name-plate');
@@ -2167,6 +2588,7 @@ class UIManager {
             this.render.hoverHexes = null;
             this.render.visionHexes = null;
             this.render.highlightHexes = this.game.getReachableHexes(col, row, this.game.activeTeam, tile.unit.speed);
+            this.render.highlightHexesColor = this.game.activeTeam === 'BLUE' ? 'rgba(59, 130, 246, 0.120)' : 'rgba(239, 68, 68, 0.120)';
         } else if (!tile.unit && !tile.isBarricade) {
             // EMPTY TILE: check if it's our deploy baseline
             if ((this.game.activeTeam === 'BLUE' && col === 0) || (this.game.activeTeam === 'RED' && col === this.game.cols - 1)) {
@@ -2619,8 +3041,107 @@ class NetworkManager {
 }
 
 
-// --- ai.js ---
-// js/ai.js
+// --- genes-v1.js ---
+// js/genes-v1.js
+
+/**
+ * ========================================================
+ * UNIFIED AI GENOME WEIGHT STRUCTURE (AIBot V1)
+ * ========================================================
+ * The 'UNIFIED' dictionary universally dictates the Minimax Engine evaluation across 
+ * both PLANT and INVADE variants mathematically.
+ * 
+ * Win Conditions are handled statically in engine:
+ * - INVADE: Any unit reaching the enemy base returns +/- 1,000,000.
+ * - PLANT: Only Flag units reaching the enemy base return +/- 1,000,000.
+ * 
+ * 
+ * CORE VARIABLES:
+ * - credit_multiplier: Multiplier for unspent credits. 
+ *       [Score += Credits * credit_multiplier]
+ * - advance_bonus: Base unit value as it moves forward on the board.
+ *       [unit_score = (Power * advance_bonus) / turns_to_goal]
+ * - flag_boost: Sets flag power instead of '0' for the unit value calculation so it can properly score.
+ *       [Power = flag_boost]
+ * - flag_progress_multiplier: Gives flags extra incentive to move forward. 
+ *       [unit_score = ((Power * advance_bonus) / turns_to_goal) * flag_progress_multiplier]
+ * - obs_value_factor: Ratio (0-1) scaling an observation unit's value assuming it had exactly 5 Power and 5 Speed natively.
+ *       [unit_score = ((5 * advance_bonus) / turns_to_goal) * obs_value_factor]
+ * - flag_intercept_K: Replaces 'advance_bonus' in PLANT mode to motivate combat units to hunt or defend flags instead of just moving forward. 
+ *       [unit_score = (Power * flag_intercept_K) / turns_to_flag]
+ * - enemy_multiplier: Makes enemy units look artificially more valuable, giving the AI a strong incentive to kill them. 
+ *       [enemy_unit_score = unit_score * enemy_multiplier]
+ * - escortBonusBase: Score bonus granted when a combat unit stands directly between a flag and an enemy to protect it. 
+ *       [Score += Power * escortBonusBase]
+ * - beam_width: Limits how many options the AI looks at to speed up the game. (e.g. only looking at the top 12 best moves each turn).
+ * ========================================================
+ */
+const DEFAULT_GENES = {
+    UNIFIED: {
+        "credit_multiplier": 10,
+        "advance_bonus": 100000,
+        "flag_boost": 6,
+        "flag_progress_multiplier": 1.2,
+        "obs_value_factor": 0.7,
+        "flag_intercept_K": 3000,
+        "enemy_multiplier": 1.3,
+        "escortBonusBase": 500,
+        "beam_width": 12
+    }
+};
+
+
+// --- genes-v2.js ---
+// js/genes-v2.js
+
+/**
+ * ========================================================
+ * V2 (MINIMAX) AI GENOME WEIGHT STRUCTURE
+ * ========================================================
+ * 
+ * V2 explicitly utilizes an 8-Term Evaluation Heuristic spanning both PLANT and INVADE modes seamlessly:
+ * 
+ * - unitValueMultiplier: Rewards holding troops based on their cost. Score = (Unit Speed * Unit Power) * unitValueMultiplier.
+ * - flagSurchargeSafe: Rewards safe flags. Score = (Flag Base Cost) * flagSurchargeSafe, IF no enemy can reach it.
+ * - flagSurchargePanic: Penalizes threatened flags. Score = (Flag Base Cost) * flagSurchargePanic, IF an enemy can reach it.
+ * - homeBaseCapture: Adds its value (+999,999) when any unit gets to the enemy home base.
+ * - proximityGradientWeight: Rewards pushing flags forward. Score = (Board Width - Distance to Enemy Base) * proximityGradientWeight.
+ * - pathSafetyRetainer: Fraction of proximity score retained if flag is threatened. Score = (Proximity Score) * pathSafetyRetainer.
+ * - frontierGapWeight: Rewards moving the single deepest combat unit forward. Score = (Board Width - Deepest Distance) * frontierGapWeight.
+ * - territorialControlWeight: Rewards leaving troops near your home base safely. Score = (Board Width - Distance to OUR Base) * territorialControlWeight.
+ * - tempoWastePenalty: Penalizes hoarding unspent credits in bank. Score = -(Credits in Bank) * (1 - tempoWastePenalty).
+ * ========================================================
+ */
+const DEFAULT_V2_GENES = {
+    // Shared structural limits applied equally
+    PLANT: {
+        "unitValueMultiplier": 24,
+        "flagSurchargeSafe": 2927,
+        "flagSurchargePanic": 876,
+        "homeBaseCapture": 265244,
+        "proximityGradientWeight": 436,
+        "pathSafetyRetainer": 0,
+        "frontierGapWeight": 219,
+        "territorialControlWeight": 157,
+        "tempoWastePenalty": 21
+    },
+    INVADE: {
+        "unitValueMultiplier": 51,
+        "flagSurchargeSafe": 0,
+        "flagSurchargePanic": 0,
+        "homeBaseCapture": 186879,
+        "proximityGradientWeight": 0,
+        "pathSafetyRetainer": 0,
+        "frontierGapWeight": 604,
+        "territorialControlWeight": 102,
+        "tempoWastePenalty": 3
+    }
+};
+
+
+// --- ai-v1.js ---
+// js/ai-v1.js
+
 
 
 const SPAWN_ARCHETYPES = [
@@ -2632,8 +3153,9 @@ const SPAWN_ARCHETYPES = [
 ];
 
 class AIBot {
-    constructor(game) {
+    constructor(game, genes = null) {
         this.game = game;
+        this.genes = genes || DEFAULT_GENES;
     }
 
     executeTurn() {
@@ -2661,6 +3183,8 @@ class AIBot {
             blue_credits: this.game.credits['BLUE'],
             red_credits: this.game.credits['RED'],
             currentPlayer: this.game.activeTeam,
+            gameMode: this.game.type, // 'INVADE' or 'PLANT'
+            flagCost: this.game.config ? this.game.config.flagCost : 10,
             units: [],
             barricades: new Set()
         };
@@ -2696,70 +3220,178 @@ class AIBot {
         const friendlyUnits = state.units.filter(u => u.player === botPlayer && !u.isFlag && u.type !== 'observation');
         const enemyUnits = state.units.filter(u => u.player === opponent && !u.isFlag && u.type !== 'observation');
 
-        // 1. Terminal Checks
-        for (let u of state.units) {
-            if (u.player === botPlayer && u.col === botGoalCol) return 100000.0;
-            if (u.player === opponent && u.col === oppGoalCol) return -100000.0;
-        }
+        const friendlyFlags = state.units.filter(u => u.player === botPlayer && u.isFlag);
+        const enemyFlags = state.units.filter(u => u.player === opponent && u.isFlag);
 
-        // 2. Invasion Pressure
-        let friendlyThreat = 0;
-        for (let u of friendlyUnits) {
-            let ttg = this.turnsToGoal(u.col, u.speed, botGoalCol);
-            friendlyThreat += 1000.0 / (ttg * ttg);
-        }
+        let modeGenes = this.genes.UNIFIED || this.genes.INVADE;
 
-        let enemyThreat = 0;
-        for (let e of enemyUnits) {
-            let ttg = this.turnsToGoal(e.col, e.speed, oppGoalCol);
-            enemyThreat += 1000.0 / (ttg * ttg);
-        }
-        let deltaInvade = friendlyThreat - enemyThreat;
+        // ==========================================
+        // UNIFIED BOARD SCORING VARIANT
+        // ==========================================
+        let score = 0;
 
-        // 3. Tactical Combat Threat & Vulnerability
-        let deltaCombat = 0.0;
-        for (let u of friendlyUnits) {
-            for (let e of enemyUnits) {
-                let dist = hexMath.offsetDistance(u.col, u.row, e.col, e.row);
-                // Friendly can attack and win
-                if (u.power >= e.power && dist <= u.speed) {
-                    deltaCombat += (e.power * e.speed) * 1.0;
-                }
-                // Enemy can attack and kill friendly
-                if (e.power >= u.power && dist <= e.speed) {
-                    deltaCombat -= (u.power * u.speed) * 1.2;
-                }
-            }
-        }
+        // 1. Win Condition
+        let hasOwnFlagBase = state.units.some(u => u.player === botPlayer && u.isFlag && u.col === botGoalCol);
+        let hasEnemyFlagBase = state.units.some(u => u.player === opponent && u.isFlag && u.col === oppGoalCol);
 
-        // 4. Material & Credit Reserves
-        let friendlyFieldVal = 0;
-        for (let u of friendlyUnits) friendlyFieldVal += u.power * u.speed;
+        let hasOwnCombatBase = state.gameMode === 'INVADE' && state.units.some(u => u.player === botPlayer && !u.isFlag && u.col === botGoalCol);
+        let hasEnemyCombatBase = state.gameMode === 'INVADE' && state.units.some(u => u.player === opponent && !u.isFlag && u.col === oppGoalCol);
 
-        let enemyFieldVal = 0;
-        for (let e of enemyUnits) enemyFieldVal += e.power * e.speed;
+        if (hasOwnFlagBase || hasOwnCombatBase) return 900000000;
+        if (hasEnemyFlagBase || hasEnemyCombatBase) return -900000000;
 
-        let friendlyBank = botPlayer === 'BLUE' ? state.blue_credits : state.red_credits;
-        let enemyBank = botPlayer === 'BLUE' ? state.red_credits : state.blue_credits;
+        // 1.5 DEFCON: Imminent Threat Thresholds
+        let defconPenalty = 0;
+        let defconBonus = 0;
 
-        let deltaMaterial = (friendlyFieldVal + 0.8 * friendlyBank) - (enemyFieldVal + 0.8 * enemyBank);
-
-        // 5. Defensive Screening
-        let defensiveScore = 0.0;
-        for (let e of enemyUnits) {
-            let eTtg = this.turnsToGoal(e.col, e.speed, oppGoalCol);
-            for (let u of friendlyUnits) {
-                let isBetween = botPlayer === 'BLUE' ? (u.col < e.col) : (u.col > e.col);
-                if (isBetween && u.power >= e.power) {
-                    let distToThreat = hexMath.offsetDistance(u.col, u.row, e.col, e.row);
-                    if (distToThreat <= u.speed + 1) {
-                        defensiveScore += 150.0 / eTtg;
+        // Enemy Threat (They are close to winning and UNBLOCKED)
+        for (let e of state.units.filter(u => u.player === opponent && (state.gameMode === 'INVADE' || u.isFlag))) {
+            // FIX: Opponent is trying to reach oppGoalCol
+            let ttg = Math.ceil(Math.abs(e.col - oppGoalCol) / (e.speed || 1));
+            if (ttg <= 2 && e.col !== oppGoalCol) {
+                let pathIsBlocked = false;
+                let stepDir = (oppGoalCol > e.col) ? 1 : -1;
+                let maxDist = Math.abs(oppGoalCol - e.col);
+                for (let i = 1; i <= maxDist; i++) {
+                    let checkCol = e.col + (i * stepDir);
+                    if (state.units.some(u => u.col === checkCol && u.player === botPlayer && u.power > 0)) {
+                        pathIsBlocked = true;
+                        break;
                     }
                 }
+                if (!pathIsBlocked) {
+                    defconPenalty += 500000; // Skyrocket priority of killing/blocking this unit
+                }
             }
         }
 
-        return deltaInvade + deltaCombat + deltaMaterial + defensiveScore;
+        // Bot Threat (We are close to winning and UNBLOCKED)
+        for (let b of state.units.filter(u => u.player === botPlayer && (state.gameMode === 'INVADE' || u.isFlag))) {
+            // FIX: Bot is trying to reach botGoalCol
+            let ttg = Math.ceil(Math.abs(b.col - botGoalCol) / (b.speed || 1));
+            if (ttg <= 2 && b.col !== botGoalCol) {
+                let pathIsBlocked = false;
+                let stepDir = (botGoalCol > b.col) ? 1 : -1;
+                let maxDist = Math.abs(botGoalCol - b.col);
+                for (let i = 1; i <= maxDist; i++) {
+                    let checkCol = b.col + (i * stepDir);
+                    if (state.units.some(u => u.col === checkCol && u.player === opponent && u.power > 0)) {
+                        pathIsBlocked = true;
+                        break;
+                    }
+                }
+                if (!pathIsBlocked) {
+                    defconBonus += 500000;
+                }
+            }
+        }
+
+        score += defconBonus;
+        score -= defconPenalty;
+
+        // 2. Credit Value
+        let ownCredits = botPlayer === 'BLUE' ? state.blue_credits : state.red_credits;
+        let oppCredits = botPlayer === 'BLUE' ? state.red_credits : state.blue_credits;
+        score += ownCredits * (modeGenes.credit_multiplier !== undefined ? modeGenes.credit_multiplier : 1);
+        score -= oppCredits * (modeGenes.credit_multiplier !== undefined ? modeGenes.credit_multiplier : 1);
+
+        // 3. Unit Value / Forward Progress
+        let ownUnitScore = 0;
+        let enemyUnitScore = 0;
+
+        for (let u of state.units) {
+            let isBot = u.player === botPlayer;
+            let goalCol = isBot ? botGoalCol : oppGoalCol;
+
+            let uScore = 0;
+
+            if (u.type === 'observation') {
+                let obsPower = 5;
+                let obsSpeed = 5;
+                let obsTtgVal = Math.max(1, this.turnsToGoal(u.col, obsSpeed, goalCol));
+                let factor = modeGenes.obs_value_factor !== undefined ? modeGenes.obs_value_factor : 0.7;
+                uScore = ((obsPower * (modeGenes.advance_bonus !== undefined ? modeGenes.advance_bonus : 100)) / obsTtgVal) * factor;
+            } else {
+                let power = u.power || 0;
+                let speedForTtg = u.speed || 1;
+
+                if (u.isFlag) {
+                    power = modeGenes.flag_boost !== undefined ? modeGenes.flag_boost : 10;
+                    speedForTtg = u.speed || 1;
+                }
+
+                if (state.gameMode === 'PLANT' && !u.isFlag) {
+                    // In PLANT Mode, Combat units strictly measure distances to Flags (to hunt or defend)
+                    let friendlyFlags = state.units.filter(f => f.isFlag && f.player === u.player);
+                    let enemyFlags = state.units.filter(f => f.isFlag && f.player !== u.player);
+                    let allTargetFlags = friendlyFlags.concat(enemyFlags);
+
+                    if (allTargetFlags.length > 0) {
+                        let minTtg = 999;
+                        for (let f of allTargetFlags) {
+                            let dist = Math.abs(u.col - f.col); // Pure horizontal proxy to bypass minimax overhead
+                            let formTtg = Math.ceil(dist / speedForTtg);
+                            if (formTtg < minTtg) minTtg = formTtg;
+                        }
+                        let ttgVal = Math.max(1, minTtg);
+                        uScore = (power * (modeGenes.flag_intercept_K !== undefined ? modeGenes.flag_intercept_K : 100)) / ttgVal;
+                    }
+                } else {
+                    // Default Forward Progress (All units in INVADE, or specifically Flags in PLANT)
+                    let ttgVal = Math.max(1, this.turnsToGoal(u.col, speedForTtg, goalCol));
+                    let flagMult = (u.isFlag && modeGenes.flag_progress_multiplier !== undefined) ? modeGenes.flag_progress_multiplier : 1;
+                    uScore = ((power * (modeGenes.advance_bonus !== undefined ? modeGenes.advance_bonus : 100)) / ttgVal) * flagMult;
+                }
+            }
+
+            if (isBot) {
+                ownUnitScore += uScore;
+            } else {
+                enemyUnitScore += uScore * (modeGenes.enemy_multiplier !== undefined ? modeGenes.enemy_multiplier : 2);
+            }
+        }
+        score += ownUnitScore - enemyUnitScore;
+
+        // 4. Escort / Wall Bonus
+        let ownCombatUnits = friendlyUnits; // Excludes flags/obs 
+        let oppCombatUnits = enemyUnits;
+
+        for (let f of friendlyFlags) {
+            for (let u of ownCombatUnits) {
+                let isEscorting = false;
+                for (let e of state.units) {
+                    if (e.player === botPlayer) continue;
+                    let isBetween = botPlayer === 'BLUE' ? (u.col > f.col && u.col <= e.col) : (u.col < f.col && u.col >= e.col);
+                    if (isBetween) {
+                        isEscorting = true;
+                        break;
+                    }
+                }
+                if (isEscorting) {
+                    score += (modeGenes.escortBonusBase !== undefined ? modeGenes.escortBonusBase : 369) * u.power;
+                }
+            }
+        }
+
+        // Symmetrical Escort 
+        for (let f of enemyFlags) {
+            for (let u of oppCombatUnits) {
+                let isEscorting = false;
+                for (let e of state.units) {
+                    if (e.player === opponent) continue;
+                    let isBetween = opponent === 'BLUE' ? (u.col > f.col && u.col <= e.col) : (u.col < f.col && u.col >= e.col);
+                    if (isBetween) {
+                        isEscorting = true;
+                        break;
+                    }
+                }
+                if (isEscorting) {
+                    score -= (modeGenes.escortBonusBase !== undefined ? modeGenes.escortBonusBase : 369) * u.power;
+                }
+            }
+        }
+
+        return score;
     }
 
     getValidMovesVirtual(state, unit) {
@@ -2804,31 +3436,11 @@ class AIBot {
 
         // A. Tactical Moves
         for (let u of state.units) {
-            if (u.player !== player || u.type === 'observation' || u.isFlag) continue;
+            if (u.player !== player || u.type === 'observation' || (state.gameMode !== 'PLANT' && u.isFlag)) continue;
 
             const validDestinations = this.getValidMovesVirtual(state, u);
             for (let target of validDestinations) {
-                let targetUnit = state.units.find(un => un.col === target.col && un.row === target.row);
-
-                // Attack
-                if (targetUnit && targetUnit.player !== player && targetUnit.type !== 'observation') {
-                    actions.push({ type: 'MOVE', unitId: u.id, unitCol: u.col, unitRow: u.row, targetCol: target.col, targetRow: target.row });
-                    continue;
-                }
-
-                // Advance
-                let currDist = Math.abs(u.col - enemyHomeCol);
-                let newDist = Math.abs(target.col - enemyHomeCol);
-                if (newDist < currDist) {
-                    actions.push({ type: 'MOVE', unitId: u.id, unitCol: u.col, unitRow: u.row, targetCol: target.col, targetRow: target.row });
-                    continue;
-                }
-
-                // Defensive Position
-                let isDefensive = player === 'BLUE' ? (target.col < u.col) : (target.col > u.col);
-                if (isDefensive) {
-                    actions.push({ type: 'MOVE', unitId: u.id, unitCol: u.col, unitRow: u.row, targetCol: target.col, targetRow: target.row });
-                }
+                actions.push({ type: 'MOVE', unitId: u.id, unitCol: u.col, unitRow: u.row, targetCol: target.col, targetRow: target.row });
             }
         }
 
@@ -2841,14 +3453,20 @@ class AIBot {
         }
 
         if (emptyHomeTiles.length > 0) {
+            let hasLivingFlag = state.units.some(u => u.player === player && u.isFlag);
+
+            if (state.gameMode === 'PLANT' && !hasLivingFlag) {
+                let cost = (state.flagCost || 10) * 3;
+                if (credits >= cost) {
+                    for (let hr of emptyHomeTiles) {
+                        actions.push({ type: 'DEPLOY', targetCol: homeCol, targetRow: hr, power: 0, speed: 3, cost: cost, archName: "Flag", unitType: 'flag' });
+                    }
+                }
+            }
+
             for (let arch of SPAWN_ARCHETYPES) {
                 if (credits >= arch.cost) {
-                    // Reduce branching factor by just using generic spread for spawning if possible instead of all blanks
-                    let rowsToTest = [];
-                    if (emptyHomeTiles.length <= 3) rowsToTest = emptyHomeTiles;
-                    else rowsToTest = [emptyHomeTiles[0], emptyHomeTiles[Math.floor(emptyHomeTiles.length / 2)], emptyHomeTiles[emptyHomeTiles.length - 1]];
-
-                    for (let hr of rowsToTest) {
+                    for (let hr of emptyHomeTiles) {
                         actions.push({ type: 'DEPLOY', targetCol: homeCol, targetRow: hr, power: arch.power, speed: arch.speed, cost: arch.cost, archName: arch.name });
                     }
                 }
@@ -2865,6 +3483,8 @@ class AIBot {
             blue_credits: state.blue_credits,
             red_credits: state.red_credits,
             currentPlayer: state.currentPlayer === 'BLUE' ? 'RED' : 'BLUE',
+            gameMode: state.gameMode,
+            flagCost: state.flagCost,
             units: state.units.map(u => ({ ...u })),
             barricades: state.barricades
         };
@@ -2901,6 +3521,7 @@ class AIBot {
             if (state.currentPlayer === 'BLUE') nextState.blue_credits -= action.cost;
             else nextState.red_credits -= action.cost;
 
+            const isFlagType = action.unitType === 'flag';
             nextState.units.push({
                 id: `spawn_${Math.random()}`,
                 col: action.targetCol,
@@ -2908,8 +3529,8 @@ class AIBot {
                 player: state.currentPlayer,
                 power: action.power,
                 speed: action.speed,
-                type: 'combat',
-                isFlag: false
+                type: action.unitType || 'combat',
+                isFlag: isFlagType
             });
         }
         return nextState;
@@ -2927,7 +3548,9 @@ class AIBot {
     minimax(state, depth, alpha, beta, maximizing, botPlayer) {
         let score = this.evaluateBoard(state, botPlayer);
 
-        if (depth === 0 || Math.abs(score) >= 90000.0) {
+        if (depth === 0 || Math.abs(score) >= 90000000.0) {
+            if (score >= 90000000.0) score += depth * 1000;
+            if (score <= -90000000.0) score -= depth * 1000;
             return { score, action: null };
         }
 
@@ -2936,7 +3559,841 @@ class AIBot {
             return { score, action: null };
         }
 
-        actions.sort((a, b) => this.actionPriority(b, state) - this.actionPriority(a, state));
+        // =====================================
+        // BEAM SEARCH (Action-Sort Pruning)
+        // =====================================
+        let scoredActions = [];
+        let modeGenes = this.genes.UNIFIED || this.genes.INVADE;
+        let beamWidth = modeGenes.beam_width || 12;
+
+        for (let a of actions) {
+            let nextState = this.applyVirtualAction(state, a);
+            let immediateScore = this.evaluateBoard(nextState, botPlayer);
+            scoredActions.push({ action: a, score: immediateScore });
+        }
+
+        if (maximizing) {
+            scoredActions.sort((a, b) => b.score - a.score);
+        } else {
+            scoredActions.sort((a, b) => a.score - b.score);
+        }
+
+        // PRUNE ALL ACTIONS OUTSIDE THE BEAM WIDTH!
+        actions = scoredActions.slice(0, beamWidth).map(pair => pair.action);
+        let bestAction = actions[0];
+
+        if (maximizing) {
+            let maxEval = -Infinity;
+            for (let a of actions) {
+                let nextState = this.applyVirtualAction(state, a);
+                let result = this.minimax(nextState, depth - 1, alpha, beta, false, botPlayer);
+                if (result.score > maxEval) {
+                    maxEval = result.score;
+                    bestAction = a;
+                }
+                alpha = Math.max(alpha, result.score);
+                if (beta <= alpha) break;
+            }
+            return { score: maxEval, action: bestAction };
+        } else {
+            let minEval = Infinity;
+            for (let a of actions) {
+                let nextState = this.applyVirtualAction(state, a);
+                let result = this.minimax(nextState, depth - 1, alpha, beta, true, botPlayer);
+                if (result.score < minEval) {
+                    minEval = result.score;
+                    bestAction = a;
+                }
+                beta = Math.min(beta, result.score);
+                if (beta <= alpha) break;
+            }
+            return { score: minEval, action: bestAction };
+        }
+    }
+
+    decideAction() {
+        const rootState = this.cloneState();
+
+        let actions = this.generateCandidateActions(rootState, 'RED');
+        if (actions.length === 0) {
+            this.game.logAction('RED', 'AI chose to Skip Action.');
+            this.game.endTurn();
+            return;
+        }
+
+        this.lastEvaluations = [];
+        let maxEval = -Infinity;
+        let bestAction = actions[0];
+
+        // Shallow beam-prune trace at root
+        let scoredActions = [];
+        let modeGenes = this.genes.UNIFIED || this.genes.INVADE;
+        let beamWidth = modeGenes.beam_width || 12;
+
+        for (let a of actions) {
+            let nextState = this.applyVirtualAction(rootState, a);
+            let immediateScore = this.evaluateBoard(nextState, 'RED');
+            scoredActions.push({ action: a, score: immediateScore });
+        }
+        scoredActions.sort((a, b) => b.score - a.score);
+        actions = scoredActions.slice(0, beamWidth).map(pair => pair.action);
+
+        const DEPTH = 5;
+        for (let a of actions) {
+            let nextState = this.applyVirtualAction(rootState, a);
+            let result = this.minimax(nextState, DEPTH - 1, -Infinity, Infinity, false, 'RED');
+
+            // CACHE EXACT TREE OUTPUT FOR UI INSIGHT
+            this.lastEvaluations.push({
+                action: a,
+                score: result.score
+            });
+
+            if (result.score > maxEval) {
+                maxEval = result.score;
+                bestAction = a;
+            }
+        }
+
+        if (!bestAction) {
+            this.game.logAction('RED', 'AI chose to Skip Action.');
+            this.game.endTurn();
+            return;
+        }
+
+        if (bestAction.type === 'DEPLOY') {
+            this.game.deployUnit('RED', bestAction.unitType || 'combat', bestAction.power, bestAction.speed, bestAction.targetCol, bestAction.targetRow);
+        } else if (bestAction.type === 'MOVE') {
+            this.game.moveUnit(bestAction.unitCol, bestAction.unitRow, bestAction.targetCol, bestAction.targetRow);
+        } else {
+            this.game.logAction('RED', 'AI chose to Skip Action.');
+            this.game.endTurn();
+        }
+    }
+
+
+    // --- AI INSIGHT HEATMAP --- 
+    generateHeatmap(state, botPlayer) {
+        let heatmapCache = [];
+        let pwr = 5; let spd = 3;
+        for (let c = 0; c < state.cols; c++) {
+            for (let r = 0; r < state.rows; r++) {
+                // Determine if a mock deployment mathematically escalates/decreases net utility
+                let occupant = state.units.find(u => u.col === c && u.row === r);
+                if (occupant) {
+                    // Record existing unit scalar 
+                    heatmapCache.push({ col: c, row: r, val: occupant.player === botPlayer ? 10 : -10, occupied: true });
+                } else if (!state.barricades.has(c + ',' + r)) {
+                    let mockState = this.cloneState(state);
+                    mockState.units.push({ id: 'X', type: 'combat', power: pwr, speed: spd, strength: pwr, isFlag: false, player: botPlayer, col: c, row: r });
+                    let val = this.evaluateBoard(mockState, botPlayer);
+                    heatmapCache.push({ col: c, row: r, val: val, occupied: false });
+                }
+            }
+        }
+
+        // Normalize scaling linearly safely from min to max to clean colors
+        let unocc = heatmapCache.filter(h => !h.occupied);
+        let min = unocc.length > 0 ? Math.min(...unocc.map(h => h.val)) : 0;
+        let max = unocc.length > 0 ? Math.max(...unocc.map(h => h.val)) : 100;
+
+        for (let h of heatmapCache) {
+            if (!h.occupied && max > min) {
+                h.norm = (h.val - min) / (max - min); // 0.0 to 1.0
+            } else {
+                h.norm = 0.5;
+            }
+        }
+        return heatmapCache;
+    }
+
+    // --- AI INSIGHT ACTION TREE (Hypothetical Unit Values) ---
+    generateActionTreeValues(state, botPlayer) {
+        let cache = [];
+        let pwr = 5; let spd = 3;
+        let actions = this.generateCandidateActions(state, botPlayer);
+
+        let uniqueTargets = new Set();
+        let tileVals = {};
+
+        let baseVal = this.evaluateBoard(state, botPlayer);
+
+        for (let a of actions) {
+            let key = `${a.targetCol},${a.targetRow}`;
+            // Evaluate hypothetical placement once per target tile to save frames
+            if (!uniqueTargets.has(key)) {
+                uniqueTargets.add(key);
+                let mockState = this.cloneState(state);
+
+                // If it's placing on top of something (like an enemy we kill, or our own space), 
+                // we simulate exactly replacing it with a new theoretical mock unit
+                let occupantIndex = mockState.units.findIndex(u => u.col === a.targetCol && u.row === a.targetRow);
+                if (occupantIndex !== -1) mockState.units.splice(occupantIndex, 1);
+
+                mockState.units.push({ id: 'X', type: 'combat', power: pwr, speed: spd, strength: pwr, isFlag: false, player: botPlayer, col: a.targetCol, row: a.targetRow });
+
+                // The value we gain directly from having this unit placed here
+                let rawScore = this.evaluateBoard(mockState, botPlayer);
+                tileVals[key] = Math.round(rawScore);
+            }
+        }
+
+        // Cache min/max for color scaling identically to heatmap
+        let min = Math.min(...Object.values(tileVals));
+        let max = Math.max(...Object.values(tileVals));
+
+        for (let key of uniqueTargets) {
+            let [c, r] = key.split(',').map(Number);
+            let val = tileVals[key];
+            let norm = 0.5;
+            if (max > min) {
+                norm = (val - min) / (max - min);
+            }
+            cache.push({
+                col: c,
+                row: r,
+                val: val,
+                norm: norm
+            });
+        }
+        return cache;
+    }
+}
+
+
+// --- ai-v2.js ---
+// js/ai.js
+
+
+
+const SPAWN_ARCHETYPES_V2 = [
+    { name: "Sprinter", power: 1, speed: 4, cost: 4 },
+    { name: "Enforcer", power: 3, speed: 3, cost: 9 },
+    { name: "Interceptor", power: 4, speed: 2, cost: 8 },
+    { name: "Titan", power: 5, speed: 3, cost: 15 },
+    { name: "Savior", power: 5, speed: 5, cost: 25 },
+];
+class OpponentModeler {
+    constructor(opponentTeam) {
+        this.opponentTeam = opponentTeam;
+        this.history = [];
+        this.stats = {
+            totalSpent: 0,
+            avgPower: 3,
+            avgSpeed: 3,
+            defenseRatio: 0.5,
+            cadence: 1.0 // 1.0=steady, high=burst, low=hoarder
+        };
+        this.lastBank = 100;
+        this.turnsTracked = 0;
+    }
+
+    updateStats(state) {
+        let currentBank = this.opponentTeam === 'BLUE' ? state.blue_credits : state.red_credits;
+        let diff = this.lastBank - currentBank;
+        if (diff > 0) this.stats.totalSpent += diff;
+        this.lastBank = currentBank;
+        this.turnsTracked++;
+
+        let oppUnits = state.units.filter(u => u.player === this.opponentTeam && !u.isFlag);
+        if (oppUnits.length > 0) {
+            let p = 0, s = 0, def = 0;
+            let midCol = state.cols / 2;
+            for (let u of oppUnits) {
+                p += u.power;
+                s += u.speed;
+                let distToOwnBase = this.opponentTeam === 'BLUE' ? u.col : Math.abs(u.col - (state.cols - 1));
+                if (distToOwnBase <= midCol) def++;
+            }
+            this.stats.avgPower = p / oppUnits.length;
+            this.stats.avgSpeed = s / oppUnits.length;
+            this.stats.defenseRatio = def / oppUnits.length;
+        }
+
+        let avgSpendPerTurn = this.stats.totalSpent / Math.max(1, this.turnsTracked);
+        if (avgSpendPerTurn > 8.0) this.stats.cadence = 2.0; // Burst
+        else if (avgSpendPerTurn < 3.0) this.stats.cadence = 0.5; // Hoarder
+        else this.stats.cadence = 1.0; // Steady
+    }
+}
+
+class MinimaxEngine {
+    constructor(game, genes) {
+        this.game = game;
+        this.baseGenes = genes;
+    }
+
+    evaluateStrategicAxis(opponentProfile) {
+        // Pure Alpha-Beta Minimax relies strictly on the native genome. No exploratory structures mapped.
+        let strategyModifier = { ...this.baseGenes };
+
+        if (opponentProfile.cadence === 2.0) {
+            // Adaptive Strategy: Counter burst builds by pulling reactive holding
+            strategyModifier.tempoWastePenalty = 0;
+        }
+
+        return strategyModifier;
+    }
+}
+
+class AIBotV2 {
+    constructor(game, genes = null) {
+        this.game = game;
+        this.genes = genes || DEFAULT_V2_GENES; // V2 engine weights natively
+
+        const gName = this.game.type === 'PLANT' ? 'PLANT' : 'INVADE';
+        const gRef = this.genes[gName];
+
+        this.game.logSystem(`AI Matrix Initialize: Minimax [Game: ${gName}]`);
+        this.game.logSystem(`Weights: Material(${gRef.unitValueMultiplier}), Advance(${gRef.frontierGapWeight}), Defend(${gRef.territorialControlWeight})`);
+
+        this.modeler = new OpponentModeler('BLUE'); // Profile human on Blue team
+        this.minimaxCore = new MinimaxEngine(game, gRef);
+    }
+
+    executeTurn() {
+        if (this.game.activeTeam !== 'RED') return;
+        if (this.game.winner) return;
+
+        // Adaptive Opponent Telemetry Update
+        this.modeler.updateStats(this.cloneState());
+
+        // Dynamic Genome Adjustments
+        const activeGenes = this.minimaxCore.evaluateStrategicAxis(this.modeler.stats);
+        this.genes = { PLANT: activeGenes, INVADE: activeGenes };
+
+        this.game.logSystem('Computer is thinking... (Hybrid MCTS/Alpha-Beta)');
+
+        // Run evaluation off the main thread lightly
+        setTimeout(() => {
+            if (this.game.activeTeam !== 'RED') return;
+            this.decideAction();
+        }, 100);
+    }
+
+    turnsToGoal(unitCol, unitSpeed, targetGoalCol) {
+        const dist = Math.abs(unitCol - targetGoalCol);
+        return Math.max(1, Math.ceil(dist / unitSpeed));
+    }
+
+    cloneState() {
+        const state = {
+            cols: this.game.cols,
+            rows: this.game.rows,
+            blue_credits: this.game.credits['BLUE'],
+            red_credits: this.game.credits['RED'],
+            currentPlayer: this.game.activeTeam,
+            gameMode: this.game.type, // 'INVADE' or 'PLANT'
+            flagCost: this.game.config ? this.game.config.flagCost : 10,
+            units: [],
+            barricades: new Set()
+        };
+
+        for (let col = 0; col < this.game.cols; col++) {
+            for (let row = 0; row < this.game.rows; row++) {
+                const t = this.game.getTile(col, row);
+                if (t.isBarricade) {
+                    state.barricades.add(`${col},${row}`);
+                }
+                if (t.unit) {
+                    state.units.push({
+                        id: `${col},${row}`,
+                        col: col,
+                        row: row,
+                        player: t.unit.team,
+                        power: t.unit.strength,
+                        speed: t.unit.speed,
+                        type: t.unit.type,
+                        isFlag: t.unit.isFlag,
+                        cost: t.unit.cost || 4
+                    });
+                }
+            }
+        }
+        return state;
+    }
+
+    // ==========================================
+    // V2: FAST A-STAR HEX ROUTING
+    // ==========================================
+    calculatePathLengthToColumn(state, unit, targetCol) {
+        if (unit.col === targetCol) return 0;
+
+        let openSet = [{ c: unit.col, r: unit.row, g: 0, f: Math.abs(unit.col - targetCol) }];
+        let closedSet = new Set();
+        let cameFrom = new Map();
+
+        while (openSet.length > 0) {
+            openSet.sort((a, b) => a.f - b.f);
+            let curr = openSet.shift();
+
+            if (curr.c === targetCol) {
+                // Return exact path nodes for T5 tracing
+                let pathList = [];
+                let step = curr;
+                while (step) {
+                    pathList.push(step);
+                    // reconstruct
+                    let parentKey = cameFrom.get(`${step.c},${step.r}`);
+                    step = parentKey ? { c: parseInt(parentKey.split(',')[0]), r: parseInt(parentKey.split(',')[1]), g: step.g - 1 } : null; // simplified backtrack
+                }
+                pathList.reverse();
+                return { length: curr.g, path: pathList };
+            }
+
+            let key = `${curr.c},${curr.r}`;
+            closedSet.add(key);
+
+            let ax = hexMath.offsetToAxial(curr.c, curr.r);
+            for (let dir of hexMath.hexDirections) {
+                let nAx = { q: ax.q + dir.dq, r: ax.r + dir.dr };
+                let nOff = hexMath.axialToOffset(nAx.q, nAx.r);
+
+                if (nOff.col >= 0 && nOff.row >= 0 && nOff.col < state.cols && nOff.row < state.rows) {
+                    let nKey = `${nOff.col},${nOff.row}`;
+                    if (closedSet.has(nKey) || state.barricades.has(nKey)) continue;
+
+                    let occupant = state.units.find(u => u.col === nOff.col && u.row === nOff.row);
+                    if (occupant && occupant.player !== unit.player) continue; // Blocked by enemy
+
+                    let gScore = curr.g + 1;
+                    let existing = openSet.find(n => n.c === nOff.col && n.r === nOff.row);
+
+                    if (!existing || gScore < existing.g) {
+                        cameFrom.set(nKey, key);
+                        if (!existing) {
+                            openSet.push({ c: nOff.col, r: nOff.row, g: gScore, f: gScore + Math.abs(nOff.col - targetCol) });
+                        } else {
+                            existing.g = gScore;
+                            existing.f = gScore + Math.abs(nOff.col - targetCol);
+                        }
+                    }
+                }
+            }
+        }
+        return { length: Infinity, path: [] }; // No path exists
+    }
+
+    // ==========================================
+    // V2: 8-TERM HYBRID EVALUATION ENGINE
+    // ==========================================
+    evaluateBoard(state, botPlayer) {
+        let score = 0;
+        const opponent = botPlayer === 'BLUE' ? 'RED' : 'BLUE';
+        const botGoalCol = botPlayer === 'BLUE' ? state.cols - 1 : 0;
+        const oppGoalCol = botPlayer === 'BLUE' ? 0 : state.cols - 1;
+
+        const friendlyUnits = state.units.filter(u => u.player === botPlayer && !u.isFlag && u.type !== 'observation');
+        const enemyUnits = state.units.filter(u => u.player === opponent && !u.isFlag && u.type !== 'observation');
+        const friendlyFlags = state.units.filter(u => u.player === botPlayer && u.isFlag);
+        const enemyFlags = state.units.filter(u => u.player === opponent && u.isFlag);
+
+        let friendlyBank = botPlayer === 'BLUE' ? state.blue_credits : state.red_credits;
+        let enemyBank = botPlayer === 'BLUE' ? state.red_credits : state.blue_credits;
+
+        const genes = state.gameMode === 'PLANT' ? this.genes.PLANT : this.genes.INVADE;
+
+        // ========================
+        // T3. Home Base Capture
+        // ========================
+        if (state.gameMode === 'PLANT') {
+            for (let f of friendlyFlags) if (f.col === botGoalCol) return genes.homeBaseCapture;
+            for (let f of enemyFlags) if (f.col === oppGoalCol) return -genes.homeBaseCapture;
+        } else {
+            for (let u of state.units) {
+                if (u.player === botPlayer && u.col === botGoalCol) return genes.homeBaseCapture;
+                if (u.player === opponent && u.col === oppGoalCol) return -genes.homeBaseCapture;
+            }
+        }
+
+        // ========================
+        // T1. Unit Value Tracking
+        // ========================
+        let friendlyMaterial = 0;
+        let enemyMaterial = 0;
+        for (let u of friendlyUnits) friendlyMaterial += u.cost * genes.unitValueMultiplier;
+        for (let f of friendlyFlags) friendlyMaterial += f.cost * genes.unitValueMultiplier;
+        for (let e of enemyUnits) enemyMaterial += e.cost * genes.unitValueMultiplier;
+        for (let f of enemyFlags) enemyMaterial += f.cost * genes.unitValueMultiplier;
+
+        // ========================
+        // T2. Flag Capture Surcharge
+        // ========================
+        // Flags are already factored in T1. The surcharge applies to flags lost (so if enemy has flags on board, we failed to capture them).
+        // Wait, T2 mathematically handles if you LOSE a flag or DESTROY an opponent's flag.
+        // If they HAVE fewer flags, it means we captured it. Given absolute board state, we evaluate currently existing flags.
+        let friendlyFlagValue = 0;
+        friendlyFlags.forEach(f => {
+            friendlyFlagValue += friendlyBank > 50 ? genes.flagSurchargeSafe : genes.flagSurchargePanic;
+        });
+
+        let enemyFlagValue = 0;
+        enemyFlags.forEach(f => {
+            enemyFlagValue += enemyBank > 50 ? genes.flagSurchargeSafe : genes.flagSurchargePanic;
+        });
+
+        score += (friendlyMaterial - enemyMaterial);
+        score += (friendlyFlagValue - enemyFlagValue);
+
+        // ========================
+        // T4. Flag Proximity Danger / Reward & T5. Path Safety Multiplier
+        // ========================
+        let friendlyFlagProx = 0;
+        for (let f of friendlyFlags) {
+            let pathInfo = this.calculatePathLengthToColumn(state, f, botGoalCol);
+            if (pathInfo.length < Infinity) {
+                let distProgressed = Math.max(0, state.cols - pathInfo.length);
+                let baseVal = distProgressed * genes.proximityGradientWeight;
+
+                let intercepted = false;
+                for (let node of pathInfo.path) {
+                    let flagArrivalTime = Math.ceil(node.g / (f.speed || 1));
+                    let interceptor = enemyUnits.find(e => Math.ceil(hexMath.offsetDistance(e.col, e.row, node.c, node.r) / e.speed) <= flagArrivalTime);
+                    if (interceptor) { intercepted = true; break; }
+                }
+                friendlyFlagProx += intercepted ? (baseVal * genes.pathSafetyRetainer) : baseVal;
+            }
+        }
+
+        let enemyFlagProx = 0;
+        for (let f of enemyFlags) {
+            let pathInfo = this.calculatePathLengthToColumn(state, f, oppGoalCol);
+            if (pathInfo.length < Infinity) {
+                let distProgressed = Math.max(0, state.cols - pathInfo.length);
+                let baseVal = distProgressed * genes.proximityGradientWeight;
+
+                let intercepted = false;
+                for (let node of pathInfo.path) {
+                    let flagArrivalTime = Math.ceil(node.g / (f.speed || 1));
+                    let interceptor = friendlyUnits.find(e => Math.ceil(hexMath.offsetDistance(e.col, e.row, node.c, node.r) / e.speed) <= flagArrivalTime);
+                    if (interceptor) { intercepted = true; break; }
+                }
+                enemyFlagProx += intercepted ? (baseVal * genes.pathSafetyRetainer) : baseVal;
+            }
+        }
+        score += friendlyFlagProx - enemyFlagProx;
+
+        // ========================
+        // T6. Vanguard Frontier (Only the deepest unit pushes)
+        // ========================
+        let friendlyFrontierVal = 0;
+        let enemyFrontierVal = 0;
+
+        if (state.gameMode !== 'PLANT') {
+            let pFriendly = friendlyUnits.sort((a, b) => Math.abs(a.col - botGoalCol) - Math.abs(b.col - botGoalCol));
+            if (pFriendly.length > 0) {
+                let u = pFriendly[0];
+                let distProgressed = Math.max(0, state.cols - Math.abs(u.col - botGoalCol));
+                friendlyFrontierVal = distProgressed * genes.frontierGapWeight;
+            }
+
+            let pEnemy = enemyUnits.sort((a, b) => Math.abs(a.col - oppGoalCol) - Math.abs(b.col - oppGoalCol));
+            if (pEnemy.length > 0) {
+                let e = pEnemy[0];
+                let distProgressed = Math.max(0, state.cols - Math.abs(e.col - oppGoalCol));
+                enemyFrontierVal = distProgressed * genes.frontierGapWeight;
+            }
+        }
+        score += friendlyFrontierVal - enemyFrontierVal;
+
+        // ========================
+        // T7. Board Control
+        // ========================
+        let friendlyTerritory = 0;
+        let enemyTerritory = 0;
+        for (let u of friendlyUnits) {
+            let distToEnemyBase = Math.abs(u.col - oppGoalCol);
+            let distToFriendlyBase = Math.abs(u.col - botGoalCol);
+            if (distToEnemyBase <= 3 || distToFriendlyBase <= 3) friendlyTerritory += genes.territorialControlWeight;
+        }
+        for (let e of enemyUnits) {
+            let distToTheirEnemyBase = Math.abs(e.col - botGoalCol);
+            let distToTheirFriendlyBase = Math.abs(e.col - oppGoalCol);
+            if (distToTheirEnemyBase <= 3 || distToTheirFriendlyBase <= 3) enemyTerritory += genes.territorialControlWeight;
+        }
+
+        // --- V2 Plant Flag Escort Injector ---
+        if (state.gameMode === 'PLANT') {
+            for (let u of friendlyUnits) {
+                for (let f of friendlyFlags) {
+                    if (hexMath.offsetDistance(u.col, u.row, f.col, f.row) <= 1) {
+                        friendlyTerritory += (genes.territorialControlWeight * 1.5);
+                    }
+                }
+            }
+            for (let e of enemyUnits) {
+                for (let f of enemyFlags) {
+                    if (hexMath.offsetDistance(e.col, e.row, f.col, f.row) <= 1) {
+                        enemyTerritory += (genes.territorialControlWeight * 1.5);
+                    }
+                }
+            }
+        }
+
+        score += friendlyTerritory - enemyTerritory;
+
+        // ========================
+        // T8. Unused Credit Reserve
+        // ========================
+        score -= (friendlyBank * genes.tempoWastePenalty);
+        score += (enemyBank * genes.tempoWastePenalty);
+
+        // ========================
+        // T9. Strategic Influence Protocol (Territory Dominance Map)
+        // ========================
+        let friendlyPowerMap = new Array(state.cols * state.rows).fill(0);
+        let enemyPowerMap = new Array(state.cols * state.rows).fill(0);
+        let allFlags = friendlyFlags.concat(enemyFlags);
+
+        // Populate Threat Map cleanly across bounds
+        for (let u of friendlyUnits.concat(enemyUnits)) {
+            let speed = u.speed || 1;
+            let power = u.strength || u.power || 0;
+            let isFriendly = (u.team === botPlayer);
+
+            let startC = Math.max(0, u.col - speed);
+            let endC = Math.min(state.cols - 1, u.col + speed);
+            let startR = Math.max(0, u.row - speed);
+            let endR = Math.min(state.rows - 1, u.row + speed);
+
+            for (let c = startC; c <= endC; c++) {
+                for (let r = startR; r <= endR; r++) {
+                    if (hexMath.offsetDistance(u.col, u.row, c, r) <= speed) {
+                        let idx = c * state.rows + r;
+                        if (isFriendly) {
+                            if (power > friendlyPowerMap[idx]) friendlyPowerMap[idx] = power;
+                        } else {
+                            if (power > enemyPowerMap[idx]) enemyPowerMap[idx] = power;
+                        }
+                    }
+                }
+            }
+        }
+
+        // Calculate mapped supremacy scores
+        let totalStrategicScore = 0;
+        for (let c = 0; c < state.cols; c++) {
+            for (let r = 0; r < state.rows; r++) {
+                // Ignore Barricades physically
+                if (state.barricades && state.barricades.has(`${c},${r}`)) continue;
+
+                let idx = c * state.rows + r;
+                let fp = friendlyPowerMap[idx];
+                let ep = enemyPowerMap[idx];
+
+                let supremacy = 0;
+                if (fp > ep) supremacy = 1;
+                else if (ep > fp) supremacy = -1;
+
+                if (supremacy !== 0) {
+                    let stepsFromCenter = Math.abs(c - ((state.cols - 1) / 2)) - 0.5;
+                    let baseColVal = 1000 * Math.pow(1.1, stepsFromCenter);
+
+                    let maxFlagBonus = 0;
+                    for (let f of allFlags) {
+                        let d = hexMath.offsetDistance(c, r, f.col, f.row);
+                        let bonus = 3000 - (300 * Math.ceil(d));
+                        if (bonus > maxFlagBonus) maxFlagBonus = bonus;
+                    }
+
+                    totalStrategicScore += supremacy * (baseColVal + maxFlagBonus);
+                }
+            }
+        }
+
+        // Scale by 100x to prevent overriding the 90k terminal Victory Cap natively
+        score += (totalStrategicScore / 100.0);
+
+        return score;
+    }
+
+    getValidMovesVirtual(state, unit) {
+        let reachable = [];
+        let queue = [{ c: unit.col, r: unit.row, dist: 0 }];
+        let visited = new Set([`${unit.col},${unit.row}`]);
+
+        while (queue.length > 0) {
+            let curr = queue.shift();
+            if (curr.dist > 0) reachable.push({ col: curr.c, row: curr.r });
+            if (curr.dist >= unit.speed) continue;
+
+            let currOccupant = state.units.find(u => u.col === curr.c && u.row === curr.r);
+            if (curr.dist > 0 && currOccupant && currOccupant.player !== unit.player) continue;
+
+            const ax = hexMath.offsetToAxial(curr.c, curr.r);
+            for (let dir of hexMath.hexDirections) {
+                const nAx = { q: ax.q + dir.dq, r: ax.r + dir.dr };
+                const nOff = hexMath.axialToOffset(nAx.q, nAx.r);
+
+                if (nOff.col >= 0 && nOff.row >= 0 && nOff.col < state.cols && nOff.row < state.rows) {
+                    const nKey = `${nOff.col},${nOff.row}`;
+                    if (!visited.has(nKey) && !state.barricades.has(nKey)) {
+                        let tOccupant = state.units.find(u => u.col === nOff.col && u.row === nOff.row);
+                        let canEnter = !tOccupant || tOccupant.player !== unit.player;
+                        if (canEnter) {
+                            visited.add(nKey);
+                            queue.push({ c: nOff.col, r: nOff.row, dist: curr.dist + 1 });
+                        }
+                    }
+                }
+            }
+        }
+        return reachable;
+    }
+
+    generateCandidateActions(state, player) {
+        const actions = [];
+        const credits = player === 'BLUE' ? state.blue_credits : state.red_credits;
+        const homeCol = player === 'BLUE' ? 0 : state.cols - 1;
+        const enemyHomeCol = player === 'BLUE' ? state.cols - 1 : 0;
+
+        // A. Tactical Moves
+        for (let u of state.units) {
+            if (u.player !== player || u.type === 'observation' || (state.gameMode !== 'PLANT' && u.isFlag)) continue;
+
+            const validDestinations = this.getValidMovesVirtual(state, u);
+            for (let target of validDestinations) {
+                actions.push({ type: 'MOVE', unitId: u.id, unitCol: u.col, unitRow: u.row, targetCol: target.col, targetRow: target.row });
+            }
+        }
+
+        // B. Deployments
+        let emptyHomeTiles = [];
+        for (let r = 0; r < state.rows; r++) {
+            if (!state.barricades.has(`${homeCol},${r}`) && !state.units.find(u => u.col === homeCol && u.row === r)) {
+                emptyHomeTiles.push(r);
+            }
+        }
+
+        if (emptyHomeTiles.length > 0) {
+            let hasLivingFlag = state.units.some(u => u.player === player && u.isFlag);
+
+            if (state.gameMode === 'PLANT' && !hasLivingFlag) {
+                let cost = (state.flagCost || 10) * 3;
+                if (credits >= cost) {
+                    for (let hr of emptyHomeTiles) {
+                        actions.push({ type: 'DEPLOY', targetCol: homeCol, targetRow: hr, power: 0, speed: 3, cost: cost, archName: "Flag", unitType: 'flag' });
+                    }
+                }
+            }
+
+            for (let arch of SPAWN_ARCHETYPES_V2) {
+                if (credits >= arch.cost) {
+                    for (let hr of emptyHomeTiles) {
+                        actions.push({ type: 'DEPLOY', targetCol: homeCol, targetRow: hr, power: arch.power, speed: arch.speed, cost: arch.cost, archName: arch.name });
+                    }
+                }
+            }
+        }
+
+        return actions;
+    }
+
+    applyVirtualAction(state, action) {
+        const nextState = {
+            cols: state.cols,
+            rows: state.rows,
+            blue_credits: state.blue_credits,
+            red_credits: state.red_credits,
+            currentPlayer: state.currentPlayer === 'BLUE' ? 'RED' : 'BLUE',
+            gameMode: state.gameMode,
+            flagCost: state.flagCost,
+            units: state.units.map(u => ({ ...u })),
+            barricades: state.barricades
+        };
+
+        if (action.type === 'MOVE') {
+            let u = nextState.units.find(un => un.col === action.unitCol && un.row === action.unitRow);
+            if (u) {
+                let targetIdx = nextState.units.findIndex(un => un.col === action.targetCol && un.row === action.targetRow);
+                if (targetIdx !== -1) {
+                    let defender = nextState.units[targetIdx];
+                    if (u.power >= defender.power) {
+                        nextState.units.splice(targetIdx, 1);
+                        u.power -= 1;
+                        // Note: exhaustion exact match for TPOW Engine
+                        if (u.power <= 0) {
+                            nextState.units = nextState.units.filter(un => un !== u);
+                        }
+                    } else {
+                        nextState.units = nextState.units.filter(un => un !== u);
+                        defender.power -= 1;
+                        if (defender.power <= 0) {
+                            nextState.units.splice(targetIdx, 1);
+                        }
+                    }
+                }
+
+                if (nextState.units.find(un => un.col === action.unitCol && un.row === action.unitRow)) {
+                    let match = nextState.units.find(un => un.col === action.unitCol && un.row === action.unitRow);
+                    match.col = action.targetCol;
+                    match.row = action.targetRow;
+                }
+            }
+        } else if (action.type === 'DEPLOY') {
+            if (state.currentPlayer === 'BLUE') nextState.blue_credits -= action.cost;
+            else nextState.red_credits -= action.cost;
+
+            const isFlagType = action.unitType === 'flag';
+            nextState.units.push({
+                id: `spawn_${Math.random()}`,
+                col: action.targetCol,
+                row: action.targetRow,
+                player: state.currentPlayer,
+                power: action.power,
+                speed: action.speed,
+                type: action.unitType || 'combat',
+                isFlag: isFlagType,
+                cost: action.cost || 10
+            });
+        }
+        return nextState;
+    }
+
+    actionPriority(action, state) {
+        if (action.type === 'MOVE') {
+            let target = state.units.find(u => u.col === action.targetCol && u.row === action.targetRow);
+            if (target && target.player !== state.currentPlayer) return 100;
+            return 50;
+        }
+        return 10;
+    }
+
+    minimax(state, depth, alpha, beta, maximizing, botPlayer) {
+        let score = this.evaluateBoard(state, botPlayer);
+
+        if (depth === 0 || Math.abs(score) >= 150000.0) {
+            if (score >= 150000.0) score += depth * 1000;
+            if (score <= -150000.0) score -= depth * 1000;
+            return { score, action: null };
+        }
+
+        let actions = this.generateCandidateActions(state, state.currentPlayer);
+        if (actions.length === 0) return { score, action: null };
+
+        // ----------------------------------------------------
+        // BEAM-SEARCH ACTION CULLING (Top-K Filter)
+        // ----------------------------------------------------
+        // To allow depths up to 10-12, explicitly evaluate actions at shallow depth (1 ply) 
+        // to filter out thousands of useless structural deployments dynamically.
+        if (depth > 2 && actions.length > 5) {
+            let shallowEvals = actions.map(a => {
+                let sNext = this.applyVirtualAction(state, a);
+                return { action: a, sResult: this.evaluateBoard(sNext, botPlayer) };
+            });
+            // Sort Descending if BotPlayer is acting (true), else Ascending
+            let isBotActing = state.currentPlayer === botPlayer;
+            if (isBotActing) shallowEvals.sort((a, b) => b.sResult - a.sResult);
+            else shallowEvals.sort((a, b) => a.sResult - b.sResult);
+
+            // Constrict branch factor dramatically on deep layers to maintain microsecond performance
+            let branchLimit = (depth > 6) ? 3 : 5;
+            actions = shallowEvals.slice(0, branchLimit).map(se => se.action);
+        } else {
+            actions.sort((a, b) => this.actionPriority(b, state) - this.actionPriority(a, state));
+        }
+        // ----------------------------------------------------
+
         let bestAction = actions[0];
 
         if (maximizing) {
@@ -2983,7 +4440,7 @@ class AIBot {
         }
 
         if (bestAction.type === 'DEPLOY') {
-            this.game.deployUnit('RED', 'combat', bestAction.power, bestAction.speed, bestAction.targetCol, bestAction.targetRow);
+            this.game.deployUnit('RED', bestAction.unitType || 'combat', bestAction.power, bestAction.speed, bestAction.targetCol, bestAction.targetRow);
         } else if (bestAction.type === 'MOVE') {
             this.game.moveUnit(bestAction.unitCol, bestAction.unitRow, bestAction.targetCol, bestAction.targetRow);
         } else {
@@ -2991,15 +4448,20 @@ class AIBot {
             this.game.endTurn();
         }
     }
+
+    executeTurn() {
+        this.decideAction();
+    }
 }
 
 
 // --- main.js ---
-// js/main.js
 
 
 
 
+ // Preserved botsAI-1
+ // New Hybrid Engine
 
 document.addEventListener('DOMContentLoaded', () => {
 
@@ -3221,14 +4683,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (GLOBAL_MODE === 'AI') {
+            // Deploying the freshly unified strict mathematical engine (V1)
             GLOBAL_AI = new AIBot(game);
+            game.aiBot = GLOBAL_AI;
+            game.localTeam = 'BLUE';
         }
 
         // On game state changes, trigger AI if necessary
         game.onStateChange = () => {
             ui.updateHUD();
             if (GLOBAL_MODE === 'AI' && GLOBAL_AI && game.activeTeam === 'RED') {
-                GLOBAL_AI.executeTurn();
+                game.logSystem('Computer is thinking...');
+                setTimeout(() => {
+                    if (game.activeTeam === 'RED') {
+                        GLOBAL_AI.executeTurn();
+                    }
+                }, 600); // Stall execution precisely past the native 500ms DOM interpolation
             }
         };
 

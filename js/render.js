@@ -32,6 +32,51 @@ export class RenderEngine {
         requestAnimationFrame(() => this.drawLoop());
     }
 
+    getMeshPattern() {
+        if (this._meshPattern) return this._meshPattern;
+
+        // Brick Wall Texture configuration
+        const pCanvas = document.createElement('canvas');
+        pCanvas.width = 30;
+        pCanvas.height = 16;
+        const pCtx = pCanvas.getContext('2d');
+
+        // Match empty void baseline mathematically
+        pCtx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+        pCtx.fillRect(0, 0, 30, 16);
+
+        // Draw brick mortar lines perfectly crisp natively using 0.5px translation boundaries
+        pCtx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+        pCtx.lineWidth = 1;
+
+        // Horizontal mortar strokes seamlessly delineating rows
+        pCtx.beginPath();
+        pCtx.moveTo(0, 8.5);
+        pCtx.lineTo(30, 8.5);
+        pCtx.stroke();
+
+        pCtx.beginPath();
+        pCtx.moveTo(0, 0.5);
+        pCtx.lineTo(30, 0.5);
+        pCtx.stroke();
+
+        // Vertical mortar staggered joints mapped for seamless masonry
+        // Row 1 (y: 0 to 8) centered joint
+        pCtx.beginPath();
+        pCtx.moveTo(15.5, 0);
+        pCtx.lineTo(15.5, 8.5);
+        pCtx.stroke();
+
+        // Row 2 (y: 8 to 16) boundary joint
+        pCtx.beginPath();
+        pCtx.moveTo(0.5, 8.5);
+        pCtx.lineTo(0.5, 16);
+        pCtx.stroke();
+
+        this._meshPattern = this.ctx.createPattern(pCanvas, 'repeat');
+        return this._meshPattern;
+    }
+
     resize() {
         const boardFrame = document.getElementById('board-frame');
         if (boardFrame) {
@@ -58,6 +103,12 @@ export class RenderEngine {
         document.body.appendChild(img);
 
         this.explosions.push({ col, row, time: Date.now(), el: img });
+
+        // Cleanup pending death units attached to this tile visually
+        let t = this.game.getTile(col, row);
+        if (t && t.pendingDeathVisual) {
+            t.pendingDeathVisual = null;
+        }
     }
 
     addMoveAnimation(sC, sR, eC, eR, unit, duration, physicalBoardTarget) {
@@ -131,6 +182,24 @@ export class RenderEngine {
             this.ctx.strokeStyle = strokeColor;
             this.ctx.stroke();
         }
+    }
+
+    drawHexSegment(x, y, radius, strokeColor, lineWidth = 1, i) {
+        this.ctx.beginPath();
+        const angle_rad1 = (Math.PI / 180) * (60 * i);
+        const angle_rad2 = (Math.PI / 180) * (60 * (i + 1));
+
+        let x1 = x + radius * Math.cos(angle_rad1);
+        let y1 = y + radius * Math.sin(angle_rad1);
+        let x2 = x + radius * Math.cos(angle_rad2);
+        let y2 = y + radius * Math.sin(angle_rad2);
+
+        this.ctx.moveTo(x1, y1);
+        this.ctx.lineTo(x2, y2);
+
+        this.ctx.strokeStyle = strokeColor;
+        this.ctx.lineWidth = lineWidth;
+        this.ctx.stroke();
     }
 
     drawUnit(x, y, col, row, unit) {
@@ -248,6 +317,21 @@ export class RenderEngine {
             }
         }
     }
+    getThreatColor(norm) {
+        let r, g, b;
+        if (norm <= 0.5) {
+            let t = norm * 2;
+            r = Math.round(26 + (136 - 26) * t);
+            g = Math.round(26 + (119 - 26) * t);
+            b = Math.round(10 + (0 - 10) * t);
+        } else {
+            let t = (norm - 0.5) * 2;
+            r = Math.round(136 + (255 - 136) * t);
+            g = Math.round(119 + (221 - 119) * t);
+            b = 0;
+        }
+        return `rgba(${r}, ${g}, ${b}, 0.6)`;
+    }
 
     drawLoop() {
         // Auto-correct any flexbox asynchronous geometry updates stretching CSS
@@ -298,6 +382,105 @@ export class RenderEngine {
         }
         this.ctx.stroke();
 
+        // Dynamically compute UX Threat Map Overlays natively via Asymmetric HUD configuration
+        let showRedMove = false;
+        let showBlueMove = false;
+
+        let team = this.game.activeTeam;
+        if (team === 'BLUE') {
+            let bR = document.getElementById('chk-blue-cfg-red');
+            let bB = document.getElementById('chk-blue-cfg-blue');
+            showRedMove = bR ? bR.checked : false;
+            showBlueMove = bB ? bB.checked : false;
+        } else if (team === 'RED') {
+            let rR = document.getElementById('chk-red-cfg-red');
+            let rB = document.getElementById('chk-red-cfg-blue');
+            showRedMove = rR ? rR.checked : false;
+            showBlueMove = rB ? rB.checked : false;
+        }
+        let blueThreat = new Set();
+        let redThreat = new Set();
+        let blueThreatUncertain = new Set();
+        let redThreatUncertain = new Set();
+
+        if (showRedMove || showBlueMove) {
+            for (let cols = 0; cols < this.game.cols; cols++) {
+                for (let rows = 0; rows < this.game.rows; rows++) {
+                    let tileData = this.game.getTile(cols, rows);
+                    if (!tileData || !tileData.unit) continue;
+
+                    let u = tileData.unit;
+                    if (u.type === 'observation' || u.isFlag) continue;
+
+                    let isCompletelyHidden = (u.team !== this.game.activeTeam && u.player !== this.game.activeTeam) && !this.game.canSeeUnit(cols, rows, this.game.activeTeam);
+                    if (isCompletelyHidden) continue;
+
+                    let hideStats = this.game.getFogOfWar(cols, rows, this.game.activeTeam);
+
+                    let isRed = u.team === 'RED' || u.player === 'RED';
+                    if (isRed && !showRedMove) continue;
+                    if (!isRed && !showBlueMove) continue;
+
+                    let speed = hideStats ? (this.game.config.maxSpeed || 5) : (u.speed || 1);
+
+                    // Use local fast BFS to respect Barricade boundaries natively
+                    let queue = [{ c: cols, r: rows, dist: 0 }];
+                    let visited = new Set([`${cols},${rows}`]);
+
+                    while (queue.length > 0) {
+                        let curr = queue.shift();
+
+                        let k = `${curr.c},${curr.r}`;
+
+                        // Threat registration applies organically
+                        if (hideStats) {
+                            if (isRed) redThreatUncertain.add(k);
+                            else blueThreatUncertain.add(k);
+                        } else {
+                            if (isRed) redThreat.add(k);
+                            else blueThreat.add(k);
+                        }
+
+                        if (curr.dist >= speed) continue;
+
+                        // If this tile holds an enemy, movement stops here
+                        let currTileObj = this.game.getTile(curr.c, curr.r);
+                        if (curr.dist > 0 && currTileObj && currTileObj.unit && currTileObj.unit.team !== u.team) {
+                            continue;
+                        }
+
+                        let ax = hexMath.offsetToAxial(curr.c, curr.r);
+                        for (let dir of hexMath.hexDirections) {
+                            let nAx = { q: ax.q + dir.dq, r: ax.r + dir.dr };
+                            let nOff = hexMath.axialToOffset(nAx.q, nAx.r);
+
+                            if (nOff.col >= 0 && nOff.row >= 0 && nOff.col < this.game.cols && nOff.row < this.game.rows) {
+                                let nKey = `${nOff.col},${nOff.row}`;
+                                let destTile = this.game.getTile(nOff.col, nOff.row);
+                                let dBlock = destTile ? destTile.isBarricade : false;
+
+                                if (!visited.has(nKey) && !dBlock) {
+                                    // You cannot step ON a friendly unit, but you can pass THROUGH them? No, Hex-Invaders doesn't allow passing strictly.
+                                    let dUnit = destTile ? destTile.unit : null;
+                                    let blockedByFriendly = dUnit && dUnit.team === u.team;
+
+                                    if (!blockedByFriendly) {
+                                        visited.add(nKey);
+                                        queue.push({ c: nOff.col, r: nOff.row, dist: curr.dist + 1 });
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        let aiTreeKeys = null;
+        if (this.game.ui && this.game.ui.showAIActionTree && this.game.aiActionTreeCache) {
+            aiTreeKeys = this.game.aiActionTreeCache.map(c => `${c.col},${c.row}`);
+        }
+
         // Draw board base
         for (let col = 0; col < this.game.cols; col++) {
             for (let row = 0; row < this.game.rows; row++) {
@@ -305,7 +488,7 @@ export class RenderEngine {
                 const key = `${col},${row}`;
                 const tile = this.game.getTile(col, row);
 
-                let fill = 'rgba(255,255,255,0.015)';
+                let fill = 'rgba(0,0,0,0.2)'; // Faint black overlay dims empty tiles explicitly against background
                 let stroke = 'rgba(255,255,255,0.1)';
                 let lineWidth = 1;
 
@@ -315,20 +498,60 @@ export class RenderEngine {
                 if (col === 0) fill = 'rgba(59, 130, 246, 0.3)'; // Brighter Blue zone
                 if (col === this.game.cols - 1) fill = 'rgba(239, 68, 68, 0.3)'; // Brighter Red zone
 
+                // Threat Map Overlays (Calculated natively based on Fog of War)
+                if (!isHomeBase) {
+                    let rT = redThreat.has(key);
+                    let bT = blueThreat.has(key);
+
+                    let rTU = !rT && redThreatUncertain.has(key);
+                    let bTU = !bT && blueThreatUncertain.has(key);
+
+                    if (rT || bT || rTU || bTU) {
+                        let pulse = (Math.sin(Date.now() / 300) + 1) / 2;
+
+                        let wR = rT ? 1 : (rTU ? pulse : 0);
+                        let wB = bT ? 1 : (bTU ? pulse : 0);
+
+                        let totalW = wR + wB;
+                        if (totalW > 0) {
+                            let pctR = wR / totalW;
+                            let pctB = wB / totalW;
+
+                            // Severely darken the absolute max luminosity so it reads as a 'dark' hint rather than a neon grid natively
+                            let R = Math.floor(pctR * 210);
+                            let B = Math.floor(pctB * 210);
+
+                            // Base standard threat projection is 0.10 (subtle faint). 
+                            // Strongest overlap intersection maximizes at 0.15.
+                            let minW = Math.min(wR, wB);
+                            let maxW = Math.max(wR, wB);
+                            let finalAlpha = (0.10 * maxW) + (0.05 * minW);
+
+                            fill = `rgba(${R}, 0, ${B}, ${finalAlpha.toFixed(3)})`;
+                        }
+                    }
+                }
+
                 // Unit Hover Vision Rules
                 if (this.visionHexes && !isHomeBase) {
-                    const vis = this.visionHexes;
-                    if (vis.inspect.has(key)) {
-                        fill = 'rgba(16, 185, 129, 0.16)';
-                    } else if (vis.spot.has(key)) {
-                        fill = 'rgba(16, 185, 129, 0.10)';
+                    let isReachable = this.hoverHexes && (this.hoverHexes.includes(key) || key === this.hoveredHex);
+
+                    if (!isReachable) {
+                        const vis = this.visionHexes;
+                        if (vis.inspect.has(key)) {
+                            // Inspect: Brighter translucent gray (0.08 alpha pure white over dark background)
+                            fill = 'rgba(255, 255, 255, 0.08)';
+                        } else if (vis.spot.has(key)) {
+                            // Spot: Darker translucent gray (0.04 alpha pure white over dark background)
+                            fill = 'rgba(255, 255, 255, 0.04)';
+                        }
                     }
                 }
 
                 // Barricade styling
                 if (tile.isBarricade) {
-                    fill = '#2a2a2a'; // unmistakably neutral dark gray
-                    stroke = '#555555';
+                    fill = this.getMeshPattern(); // Replaces solid black with transparent mesh
+                    stroke = '#e2e8f0'; // bright gray, almost white
                     lineWidth = 2;
                 }
 
@@ -350,9 +573,9 @@ export class RenderEngine {
                         fill = 'rgba(16, 185, 129, 0.2)';
                     }
                 } else if (this.highlightHexes && this.highlightHexes.includes(key) && !isHomeBase) {
-                    fill = 'rgba(16, 185, 129, 0.22)'; // Subtle green for reachable
+                    // Replaced fill logic with outer perimeter segments rendered later.
                 } else if (this.hoverHexes && this.hoverHexes.includes(key) && !isHomeBase) {
-                    fill = this.hoverHexesColor || 'rgba(16, 185, 129, 0.22)'; // Render the specific team color during hover
+                    // Replaced fill logic with outer perimeter segments rendered later.
                 } else if (this.previewBarricade && this.previewBarricade.includes(key)) {
                     if (this.game.activeTeam === 'BLUE') {
                         fill = 'rgba(59, 130, 246, 0.4)';
@@ -364,11 +587,104 @@ export class RenderEngine {
                     lineWidth = 2;
                 }
 
+                let isBlueRange = this.game.blueRangeHexes && this.game.blueRangeHexes.has(key);
+                let isRedRange = this.game.redRangeHexes && this.game.redRangeHexes.has(key);
+
+                if (isBlueRange && isRedRange) {
+                    fill = 'rgba(168, 85, 247, 0.4)'; // Purple
+                } else if (isBlueRange) {
+                    fill = 'rgba(59, 130, 246, 0.3)';
+                } else if (isRedRange) {
+                    fill = 'rgba(239, 68, 68, 0.3)';
+                }
+
+                if (this.game.ui && this.game.ui.showAIHeatmap && this.game.aiHeatmapCache) {
+                    let hm = this.game.aiHeatmapCache.find(h => h.col === col && h.row === row);
+                    if (hm) {
+                        if (hm.occupied) {
+                            fill = hm.val > 0 ? 'rgba(59, 130, 246, 0.4)' : 'rgba(239, 68, 68, 0.4)';
+                        } else {
+                            fill = this.getThreatColor(hm.norm);
+                        }
+                    }
+                } else if (this.game.ui && this.game.ui.showAIActionTree && this.game.aiActionTreeCache) {
+                    let ev = this.game.aiActionTreeCache.find(e => e.col === col && e.row === row);
+                    if (ev) {
+                        fill = this.getThreatColor(ev.norm);
+                    }
+                }
                 this.drawHex(pt.x, pt.y, this.hexRadius - 1, fill, stroke, lineWidth);
 
+                // Draw perimeter strokes for reachable zones natively 
+                let isHoverReach = this.hoverHexes && (this.hoverHexes.includes(key) || key === this.hoveredHex);
+                let isSelectReach = this.highlightHexes && (this.highlightHexes.includes(key) || key === this.game.selectedTile);
+                let isAiReach = aiTreeKeys && aiTreeKeys.includes(key);
+
+                if ((isHoverReach && this.hoverHexes && this.hoverHexes.length > 0) ||
+                    (isSelectReach && this.highlightHexes && this.highlightHexes.length > 0) ||
+                    (isAiReach)) {
+
+                    let perimeterGroup;
+                    let perimeterColor;
+                    let rootTile;
+                    if (isAiReach) {
+                        perimeterGroup = aiTreeKeys;
+                        perimeterColor = 'rgba(251, 191, 36, 1.0)';
+                        rootTile = null;
+                    } else if (isSelectReach) {
+                        perimeterGroup = this.highlightHexes;
+                        perimeterColor = this.highlightHexesColor;
+                        rootTile = this.game.selectedTile;
+                    } else {
+                        perimeterGroup = this.hoverHexes;
+                        perimeterColor = this.hoverHexesColor;
+                        rootTile = this.hoveredHex;
+                    }
+
+                    // Thicker stroke for maximum perimeter visibility matching the threat alpha implicitly
+                    let pStroke = perimeterColor;
+
+                    if (perimeterColor) {
+                        // Extract rgba to explicitly mutate the physical coordinates dynamically
+                        let m = perimeterColor.match(/rgba\((\d+),\s*(\d+),\s*(\d+),/);
+                        if (m) {
+                            let r = parseInt(m[1]);
+                            let g = parseInt(m[2]);
+                            let b = parseInt(m[3]);
+
+                            // Mathematically shift the base Red/Blue strictly 40% towards pure white
+                            // ensuring the topological bounds explicitly detach from identically colored UI matrices
+                            r = Math.min(255, Math.floor(r + (255 - r) * 0.4));
+                            g = Math.min(255, Math.floor(g + (255 - g) * 0.4));
+                            b = Math.min(255, Math.floor(b + (255 - b) * 0.4));
+
+                            pStroke = `rgba(${r}, ${g}, ${b}, 0.95)`;
+                        }
+                    }
+
+                    const ax = hexMath.offsetToAxial(col, row);
+                    for (let d = 0; d < 6; d++) {
+                        let dir = hexMath.hexDirections[d];
+                        const nAx = { q: ax.q + dir.dq, r: ax.r + dir.dr };
+                        const nOff = hexMath.axialToOffset(nAx.q, nAx.r);
+                        let nKey = `${nOff.col},${nOff.row}`;
+
+                        // If neighbor is NOT in the reach set and is NOT the root tile itself, draw an edge mapping!
+                        if (!perimeterGroup.includes(nKey) && nKey !== rootTile) {
+                            let segI = (6 - d) % 6; // Geometrically correct polar to axial edge inversion mapping
+                            this.drawHexSegment(pt.x, pt.y, this.hexRadius - 1, pStroke, 3.5, segI);
+                        }
+                    }
+                }
+
                 // Draw Unit
-                if (tile.unit && !tile.unit.isAnimating) {
-                    this.drawUnit(pt.x, pt.y, col, row, tile.unit);
+                let baseUnit = tile ? tile.unit : null;
+                if (!baseUnit && tile && tile.pendingDeathVisual) {
+                    baseUnit = tile.pendingDeathVisual;
+                }
+
+                if (baseUnit && !baseUnit.isAnimating) {
+                    this.drawUnit(pt.x, pt.y, col, row, baseUnit);
                 }
             }
         }
@@ -433,6 +749,27 @@ export class RenderEngine {
                     a.physicalBoardTarget.isAnimating = false;
                 }
                 this.moveAnimations.splice(i, 1);
+            }
+        }
+
+        // --- DRAW ACTION TREE ---
+        if (this.game.ui && this.game.ui.showAIActionTree && this.game.aiActionTreeCache) {
+            let evals = this.game.aiActionTreeCache;
+            let maxVal = evals.length > 0 ? Math.max(...evals.map(e => e.val)) : 0;
+
+            for (let ev of evals) {
+                let targetPt = hexMath.hexToPixel(ev.col, ev.row, this.hexRadius, this.ox, this.oy);
+                let roundedVal = Math.round(ev.val);
+                let scoreTxt = (roundedVal > 0 ? '+' : '') + roundedVal.toLocaleString();
+
+                let isMax = ev.val === maxVal;
+                this.ctx.font = 'bold ' + (isMax ? '18px' : '14px') + ' Inter, sans-serif';
+                this.ctx.fillStyle = isMax ? '#fbbf24' : '#fff';
+                this.ctx.shadowColor = 'black';
+                this.ctx.shadowBlur = 4;
+                this.ctx.textAlign = 'center';
+                this.ctx.fillText(scoreTxt, targetPt.x, targetPt.y + 6);
+                this.ctx.shadowBlur = 0;
             }
         }
 

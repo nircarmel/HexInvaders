@@ -72,6 +72,42 @@ export class UIManager {
             btnHelp.addEventListener('touchend', hideHelp);
         }
 
+        // Map AI insight visual flags natively
+        this.showAIActionTree = false;
+        this.showAIHeatmap = false;
+
+        const btnAiTree = document.getElementById('btn-ai-action-tree');
+        if (btnAiTree) {
+            btnAiTree.addEventListener('mousedown', () => {
+                if (this.game.aiBot) this.game.aiActionTreeCache = this.game.aiBot.generateActionTreeValues(this.game.aiBot.cloneState(), 'RED');
+                this.showAIActionTree = true;
+            });
+            btnAiTree.addEventListener('mouseup', () => { this.showAIActionTree = false; });
+            btnAiTree.addEventListener('mouseleave', () => { this.showAIActionTree = false; });
+            btnAiTree.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                if (this.game.aiBot) this.game.aiActionTreeCache = this.game.aiBot.generateActionTreeValues(this.game.aiBot.cloneState(), 'RED');
+                this.showAIActionTree = true;
+            });
+            btnAiTree.addEventListener('touchend', (e) => { e.preventDefault(); this.showAIActionTree = false; });
+        }
+
+        const btnAiHeatmap = document.getElementById('btn-ai-heatmap');
+        if (btnAiHeatmap) {
+            btnAiHeatmap.addEventListener('mousedown', () => {
+                if (this.game.aiBot) this.game.aiHeatmapCache = this.game.aiBot.generateHeatmap(this.game.aiBot.cloneState(), 'RED');
+                this.showAIHeatmap = true;
+            });
+            btnAiHeatmap.addEventListener('mouseup', () => { this.showAIHeatmap = false; });
+            btnAiHeatmap.addEventListener('mouseleave', () => { this.showAIHeatmap = false; });
+            btnAiHeatmap.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                if (this.game.aiBot) this.game.aiHeatmapCache = this.game.aiBot.generateHeatmap(this.game.aiBot.cloneState(), 'RED');
+                this.showAIHeatmap = true;
+            });
+            btnAiHeatmap.addEventListener('touchend', (e) => { e.preventDefault(); this.showAIHeatmap = false; });
+        }
+
         // History Controls
         document.getElementById('btn-hist-prev').addEventListener('click', () => {
             let idx = this.game.historyIndex - 1;
@@ -146,6 +182,9 @@ export class UIManager {
         this.barricadeOffset = undefined;
         window.addEventListener('wheel', (e) => {
             if (this.currentAction === 'WAITING_BARRICADE' && this.game.selectedTile) {
+                e.preventDefault();
+                e.stopPropagation(); // Prevent input.js from zooming the canvas
+
                 const s = this.game.selectedTile.split(',');
                 const col = parseInt(s[0]);
                 const row = parseInt(s[1]);
@@ -168,7 +207,7 @@ export class UIManager {
                     this.render.previewBarricade = this.game.getBarricadePreview(col, row, this.barricadeOffset);
                 }
             }
-        });
+        }, { capture: true });
     }
 
     updateTooltip(e) {
@@ -211,7 +250,7 @@ export class UIManager {
             if (!hideStats) {
                 if (!this.game.selectedTile && !this._contextTarget) {
                     this.render.hoverHexes = this.game.getReachableHexes(col, row, tile.unit.team, tile.unit.speed);
-                    this.render.hoverHexesColor = 'rgba(16, 185, 129, 0.22)';
+                    this.render.hoverHexesColor = tile.unit.team === 'BLUE' ? 'rgba(59, 130, 246, 0.120)' : 'rgba(239, 68, 68, 0.120)';
                 }
 
                 document.getElementById('tt-str').innerText = tile.unit.strength;
@@ -319,15 +358,40 @@ export class UIManager {
     updateHUD() {
         if (!this.topPanelInitialized && this.game.config) {
             this.topPanelInitialized = true;
-            document.getElementById('info-mode').innerText = this.game.config.type === 'PLANT' ? 'Plant Flag' : 'Invade';
 
-            const vString = {
-                'HIDDEN': 'Your Units',
-                'NEARBY': 'Nearby Units',
-                'VISIBLE': 'All Units'
+            // Mode Value and Tooltip
+            let modeEl = document.getElementById('info-mode');
+            if (this.game.config.type === 'PLANT') {
+                modeEl.innerText = 'Plant Flag';
+                modeEl.title = "First player to reach the enemy home with a FLAG UNIT wins.";
+            } else {
+                modeEl.innerText = 'Invade';
+                modeEl.title = "First player to reach the enemy home with ANY UNIT wins.";
+            }
+            modeEl.style.cursor = 'help';
+
+            // Visibility Value and Tooltip
+            let visEl = document.getElementById('info-vis');
+            let visData = {
+                'HIDDEN': { text: 'Your Units', title: 'Speed and Power are visible only for your units.' },
+                'NEARBY': { text: 'Nearby Units', title: 'Speed and Power are visible for units within move range + 1.' },
+                'VISIBLE': { text: 'All Units', title: 'Speed and Power are visible for all units.' }
             };
-            document.getElementById('info-vis').innerText = vString[this.game.config.mode] || 'Unknown';
-            document.getElementById('info-power').innerText = this.game.config.powerMode === 'DEPLETING' ? 'Depleting' : 'Constant';
+            let v = visData[this.game.config.mode] || { text: 'Unknown', title: '' };
+            visEl.innerText = v.text;
+            visEl.title = v.title;
+            visEl.style.cursor = 'help';
+
+            // Power Value and Tooltip
+            let pwrEl = document.getElementById('info-power');
+            if (this.game.config.powerMode === 'DEPLETING') {
+                pwrEl.innerText = 'Depleting';
+                pwrEl.title = "Units lose 1 Power point after each fight.";
+            } else {
+                pwrEl.innerText = 'Constant';
+                pwrEl.title = "Units keep their Power value for the whole game.";
+            }
+            pwrEl.style.cursor = 'help';
         }
 
         const bNamePlate = document.getElementById('blue-name-plate');
@@ -536,6 +600,7 @@ export class UIManager {
             this.render.hoverHexes = null;
             this.render.visionHexes = null;
             this.render.highlightHexes = this.game.getReachableHexes(col, row, this.game.activeTeam, tile.unit.speed);
+            this.render.highlightHexesColor = this.game.activeTeam === 'BLUE' ? 'rgba(59, 130, 246, 0.120)' : 'rgba(239, 68, 68, 0.120)';
         } else if (!tile.unit && !tile.isBarricade) {
             // EMPTY TILE: check if it's our deploy baseline
             if ((this.game.activeTeam === 'BLUE' && col === 0) || (this.game.activeTeam === 'RED' && col === this.game.cols - 1)) {
