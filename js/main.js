@@ -1,8 +1,8 @@
-// js/main.js
 import { HexGame } from './game.js';
 import { RenderEngine } from './render.js';
 import { InputController } from './input.js';
 import { UIManager } from './ui.js';
+import { AIBotV3 } from './ai-v3.js'; // New Influence Map AI
 
 document.addEventListener('DOMContentLoaded', () => {
 
@@ -224,14 +224,22 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         if (GLOBAL_MODE === 'AI') {
-            GLOBAL_AI = new AIBot(game);
+            // Deploying the freshly unified strict mathematical engine (V1)
+            GLOBAL_AI = new AIBotV3(game);
+            game.aiBot = GLOBAL_AI;
+            game.localTeam = 'BLUE';
         }
 
         // On game state changes, trigger AI if necessary
         game.onStateChange = () => {
             ui.updateHUD();
             if (GLOBAL_MODE === 'AI' && GLOBAL_AI && game.activeTeam === 'RED') {
-                GLOBAL_AI.executeTurn();
+                game.logSystem('Computer is thinking...');
+                setTimeout(() => {
+                    if (game.activeTeam === 'RED') {
+                        GLOBAL_AI.executeTurn();
+                    }
+                }, 600); // Stall execution precisely past the native 500ms DOM interpolation
             }
         };
 

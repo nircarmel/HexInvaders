@@ -127,7 +127,7 @@ const hexMath = {
     }
 };
 
-// js/ai.js
+// js/ai-v1.js
 
 
 const SPAWN_ARCHETYPES = [
@@ -266,6 +266,7 @@ class AIBot {
             }
         }
 
+        console.log(EVAL MODE:  RED:  ACTIONS: );
         return deltaInvade + deltaCombat + deltaMaterial + defensiveScore;
     }
 
@@ -503,10 +504,10 @@ class AIBot {
 
 try {
     let fakeGame = {
-        cols: 30, rows: 15, activeTeam: 'RED', winner: null,
+        cols: 30, rows: 15, activeTeam: 'RED', winner: null, type: 'PLANT',
         credits: { BLUE: 46, RED: 50 },
         board: new Map(),
-        getTile: function(c, r) { return this.board.get(c + ',' + r) || { isBarricade: false, unit: null }; },
+        getTile: function (c, r) { return this.board.get(c + ',' + r) || { isBarricade: false, unit: null }; },
         logSystem: console.log,
         logAction: console.log,
         deployUnit: (team, type, str, spd, c, r) => { console.log('DEPLOY:', team, type, str, spd, c, r); return true; },
@@ -514,19 +515,19 @@ try {
         endTurn: () => { console.log('END TURN'); }
     };
 
-    for(let r=0; r<15; r++) {
-        for(let c=0; c<30; c++) {
-            fakeGame.board.set(c+','+r, { isBarricade: false, unit: null });
+    for (let r = 0; r < 15; r++) {
+        for (let c = 0; c < 30; c++) {
+            fakeGame.board.set(c + ',' + r, { isBarricade: false, unit: null });
         }
     }
-    
+
     // Exact simulation of Hex-Invaders Unit class (no col/row)
     fakeGame.board.set('0,0', {
-        isBarricade: false, 
+        isBarricade: false,
         unit: { team: 'BLUE', strength: 1, speed: 4, type: 'combat', isFlag: false, hasActed: false, cost: 4 }
     });
 
-    let ai = new AIBot(fakeGame);
+    let ai = new AIBot(fakeGame, require(\'./js/genes-v3.js\').DEFAULT_V3_GENES);
     ai.decideAction();
     console.log('SUCCESS');
 } catch (err) {

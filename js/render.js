@@ -125,6 +125,19 @@ export class RenderEngine {
         this.explosions = [];
     }
 
+    clearMoveAnimations() {
+        for (let a of this.moveAnimations) {
+            if (a.physicalBoardTarget) {
+                a.physicalBoardTarget.isAnimating = false;
+            }
+        }
+        this.moveAnimations = [];
+    }
+
+    draw() {
+        this.drawLoop();
+    }
+
     centerCamera() {
         // Calculate true max bounds including physical rendering edges
         const reqWidth = this.game.cols * 1.5 + 0.5;
@@ -209,14 +222,16 @@ export class RenderEngine {
             perspective = this.game.localTeam;
         }
 
-        // Line of Sight Mechanic Check
+        const isAIHeatmapDebug = (this.game.ui && this.game.ui.showAIHeatmap);
+
+        // Line of Sight Mechanic Check (bypassed in AI heatmap debug mode)
         // Totally skip rendering enemy if they are completely hidden by barricades
-        if (unit.team !== perspective) {
+        if (!isAIHeatmapDebug && unit.team !== perspective) {
             if (!this.game.canSeeUnit(col, row, perspective)) {
                 return; // Skip rendering entirely
             }
         }
-        let hideStats = this.game.getFogOfWar(col, row, perspective);
+        let hideStats = isAIHeatmapDebug ? false : this.game.getFogOfWar(col, row, perspective, unit);
 
         // Override if moving unit isn't physically on the tile during combat explosions
         if (unit.exposedCounter && unit.exposedCounter > 0) {
@@ -333,6 +348,33 @@ export class RenderEngine {
         return `rgba(${r}, ${g}, ${b}, 0.6)`;
     }
 
+    getScoreHeatmapColor(val, maxPos = 1000, maxNeg = 1000) {
+        if (!val || val === 0) {
+            return 'rgba(0, 0, 0, 0.2)';
+        }
+
+        if (val > 0) {
+            // Positive numbers: shades of green (soft green for low positive -> bright green for high positive)
+            const ref = maxPos > 0 ? maxPos : 1000;
+            const t = Math.min(1, Math.max(0.08, Math.pow(Math.min(val, ref) / ref, 0.6)));
+            const r = Math.round(52 - 32 * t);
+            const g = Math.round(190 + 55 * t);
+            const b = Math.round(150 - 60 * t);
+            const a = (0.22 + 0.53 * t).toFixed(3);
+            return `rgba(${r}, ${g}, ${b}, ${a})`;
+        } else {
+            // Negative numbers: shades of red (soft red for low negative -> bright red for very negative)
+            const ref = maxNeg > 0 ? maxNeg : 1000;
+            const absVal = Math.abs(val);
+            const t = Math.min(1, Math.max(0.08, Math.pow(Math.min(absVal, ref) / ref, 0.6)));
+            const r = Math.round(220 + 35 * t);
+            const g = Math.round(90 * (1 - t));
+            const b = Math.round(90 * (1 - t));
+            const a = (0.22 + 0.55 * t).toFixed(3);
+            return `rgba(${r}, ${g}, ${b}, ${a})`;
+        }
+    }
+
     drawLoop() {
         // Auto-correct any flexbox asynchronous geometry updates stretching CSS
         const boardFrame = document.getElementById('board-frame');
@@ -386,18 +428,14 @@ export class RenderEngine {
         let showRedMove = false;
         let showBlueMove = false;
 
-        let team = this.game.activeTeam;
-        if (team === 'BLUE') {
-            let bR = document.getElementById('chk-blue-cfg-red');
-            let bB = document.getElementById('chk-blue-cfg-blue');
-            showRedMove = bR ? bR.checked : false;
-            showBlueMove = bB ? bB.checked : false;
-        } else if (team === 'RED') {
-            let rR = document.getElementById('chk-red-cfg-red');
-            let rB = document.getElementById('chk-red-cfg-blue');
-            showRedMove = rR ? rR.checked : false;
-            showBlueMove = rB ? rB.checked : false;
-        }
+        // In AI and Online modes, persistently use the local human player's viewpoint and toggles
+        let viewerTeam = (this.game.gameMode === 'AI' || this.game.gameMode === 'ONLINE') ? (this.game.localTeam || 'BLUE') : this.game.activeTeam;
+        let prefix = viewerTeam.toLowerCase();
+        let bR = document.getElementById(`chk-${prefix}-cfg-red`);
+        let bB = document.getElementById(`chk-${prefix}-cfg-blue`);
+        showRedMove = bR ? bR.checked : false;
+        showBlueMove = bB ? bB.checked : false;
+
         let blueThreat = new Set();
         let redThreat = new Set();
         let blueThreatUncertain = new Set();
@@ -412,15 +450,15 @@ export class RenderEngine {
                     let u = tileData.unit;
                     if (u.type === 'observation' || u.isFlag) continue;
 
-                    let isCompletelyHidden = (u.team !== this.game.activeTeam && u.player !== this.game.activeTeam) && !this.game.canSeeUnit(cols, rows, this.game.activeTeam);
-                    if (isCompletelyHidden) continue;
-
-                    let hideStats = this.game.getFogOfWar(cols, rows, this.game.activeTeam);
-
                     let isRed = u.team === 'RED' || u.player === 'RED';
                     if (isRed && !showRedMove) continue;
                     if (!isRed && !showBlueMove) continue;
 
+                    // Calculate unit visibility strictly from the viewer's (human player's) perspective
+                    let isCompletelyHidden = (u.team !== viewerTeam && u.player !== viewerTeam) && !this.game.canSeeUnit(cols, rows, viewerTeam);
+                    if (isCompletelyHidden) continue;
+
+                    let hideStats = this.game.getFogOfWar(cols, rows, viewerTeam, u);
                     let speed = hideStats ? (this.game.config.maxSpeed || 5) : (u.speed || 1);
 
                     // Use local fast BFS to respect Barricade boundaries natively
@@ -476,9 +514,20 @@ export class RenderEngine {
             }
         }
 
+        const isAIHeatmapDebug = (this.game.ui && this.game.ui.showAIHeatmap);
+
         let aiTreeKeys = null;
         if (this.game.ui && this.game.ui.showAIActionTree && this.game.aiActionTreeCache) {
             aiTreeKeys = this.game.aiActionTreeCache.map(c => `${c.col},${c.row}`);
+        }
+
+        let heatmapMaxPos = 1000;
+        let heatmapMaxNeg = 1000;
+        if (this.game.ui && this.game.ui.showAIHeatmap && this.game.aiHeatmapCache) {
+            let posVals = this.game.aiHeatmapCache.map(h => h.val).filter(v => v > 0 && v < 500000);
+            let negVals = this.game.aiHeatmapCache.map(h => h.val).filter(v => v < 0 && v > -500000);
+            if (posVals.length > 0) heatmapMaxPos = Math.max(...posVals);
+            if (negVals.length > 0) heatmapMaxNeg = Math.max(...negVals.map(v => Math.abs(v)));
         }
 
         // Draw board base
@@ -598,14 +647,11 @@ export class RenderEngine {
                     fill = 'rgba(239, 68, 68, 0.3)';
                 }
 
-                if (this.game.ui && this.game.ui.showAIHeatmap && this.game.aiHeatmapCache) {
-                    let hm = this.game.aiHeatmapCache.find(h => h.col === col && h.row === row);
-                    if (hm) {
-                        if (hm.occupied) {
-                            fill = hm.val > 0 ? 'rgba(59, 130, 246, 0.4)' : 'rgba(239, 68, 68, 0.4)';
-                        } else {
-                            fill = this.getThreatColor(hm.norm);
-                        }
+                let hm = null;
+                if (this.game.ui && this.game.ui.showAIHeatmap && this.game.aiHeatmapCache && !tile.isBarricade) {
+                    hm = this.game.aiHeatmapCache.find(h => h.col === col && h.row === row);
+                    if (hm && hm.val !== null && hm.val !== undefined) {
+                        fill = this.getScoreHeatmapColor(hm.val, heatmapMaxPos, heatmapMaxNeg);
                     }
                 } else if (this.game.ui && this.game.ui.showAIActionTree && this.game.aiActionTreeCache) {
                     let ev = this.game.aiActionTreeCache.find(e => e.col === col && e.row === row);
@@ -614,6 +660,11 @@ export class RenderEngine {
                     }
                 }
                 this.drawHex(pt.x, pt.y, this.hexRadius - 1, fill, stroke, lineWidth);
+
+                // Unreachable tile dark overlay: 90% black overlay on top of tiles unreachable by the AI bot
+                if (hm && !hm.isBarricade && !hm.botReachable) {
+                    this.drawHex(pt.x, pt.y, this.hexRadius - 1, 'rgba(0, 0, 0, 0.9)', stroke, lineWidth);
+                }
 
                 // Draw perimeter strokes for reachable zones natively 
                 let isHoverReach = this.hoverHexes && (this.hoverHexes.includes(key) || key === this.hoveredHex);
@@ -683,8 +734,12 @@ export class RenderEngine {
                     baseUnit = tile.pendingDeathVisual;
                 }
 
-                if (baseUnit && !baseUnit.isAnimating) {
-                    this.drawUnit(pt.x, pt.y, col, row, baseUnit);
+                if (baseUnit) {
+                    const isCurrentlyAnimating = !isAIHeatmapDebug && this.moveAnimations.some(a => a.physicalBoardTarget === baseUnit);
+                    if (!isCurrentlyAnimating) {
+                        baseUnit.isAnimating = false;
+                        this.drawUnit(pt.x, pt.y, col, row, baseUnit);
+                    }
                 }
             }
         }
@@ -731,28 +786,30 @@ export class RenderEngine {
         }
 
         // Draw Lerping Units
-        for (let i = this.moveAnimations.length - 1; i >= 0; i--) {
-            const a = this.moveAnimations[i];
-            const progress = Math.min(1, (now - a.startTime) / a.duration);
+        if (!isAIHeatmapDebug) {
+            for (let i = this.moveAnimations.length - 1; i >= 0; i--) {
+                const a = this.moveAnimations[i];
+                const progress = Math.min(1, (now - a.startTime) / a.duration);
 
-            const startPt = hexMath.hexToPixel(a.sC, a.sR, this.hexRadius, this.ox, this.oy);
-            const endPt = hexMath.hexToPixel(a.eC, a.eR, this.hexRadius, this.ox, this.oy);
+                const startPt = hexMath.hexToPixel(a.sC, a.sR, this.hexRadius, this.ox, this.oy);
+                const endPt = hexMath.hexToPixel(a.eC, a.eR, this.hexRadius, this.ox, this.oy);
 
-            // Linear Interpolation
-            const lerpX = startPt.x + (endPt.x - startPt.x) * progress;
-            const lerpY = startPt.y + (endPt.y - startPt.y) * progress;
+                // Linear Interpolation
+                const lerpX = startPt.x + (endPt.x - startPt.x) * progress;
+                const lerpY = startPt.y + (endPt.y - startPt.y) * progress;
 
-            this.drawUnit(lerpX, lerpY, a.eC, a.eR, a.unit);
+                this.drawUnit(lerpX, lerpY, a.eC, a.eR, a.unit);
 
-            if (progress >= 1) {
-                if (a.physicalBoardTarget) {
-                    a.physicalBoardTarget.isAnimating = false;
+                if (progress >= 1) {
+                    if (a.physicalBoardTarget) {
+                        a.physicalBoardTarget.isAnimating = false;
+                    }
+                    this.moveAnimations.splice(i, 1);
                 }
-                this.moveAnimations.splice(i, 1);
             }
         }
 
-        // --- DRAW ACTION TREE ---
+        // --- DRAW AI OVERLAY NUMBERS ---
         if (this.game.ui && this.game.ui.showAIActionTree && this.game.aiActionTreeCache) {
             let evals = this.game.aiActionTreeCache;
             let maxVal = evals.length > 0 ? Math.max(...evals.map(e => e.val)) : 0;
@@ -763,12 +820,39 @@ export class RenderEngine {
                 let scoreTxt = (roundedVal > 0 ? '+' : '') + roundedVal.toLocaleString();
 
                 let isMax = ev.val === maxVal;
-                this.ctx.font = 'bold ' + (isMax ? '18px' : '14px') + ' Inter, sans-serif';
+                this.ctx.font = 'bold ' + (isMax ? '13px' : '10px') + ' Inter, sans-serif';
                 this.ctx.fillStyle = isMax ? '#fbbf24' : '#fff';
                 this.ctx.shadowColor = 'black';
                 this.ctx.shadowBlur = 4;
                 this.ctx.textAlign = 'center';
-                this.ctx.fillText(scoreTxt, targetPt.x, targetPt.y + 6);
+                this.ctx.fillText(scoreTxt, targetPt.x, targetPt.y + 4);
+                this.ctx.shadowBlur = 0;
+            }
+        } else if (this.game.ui && this.game.ui.showAIHeatmap && this.game.aiHeatmapCache) {
+            let evals = this.game.aiHeatmapCache;
+            let validVals = evals.map(e => e.val).filter(v => v < 500000);
+            let maxVal = validVals.length > 0 ? Math.max(...validVals) : 0;
+
+            for (let ev of evals) {
+                if (ev.isBarricade || ev.val === null || ev.val === undefined) continue;
+                let tile = this.game.getTile(ev.col, ev.row);
+                if (tile && tile.isBarricade) continue;
+
+                let targetPt = hexMath.hexToPixel(ev.col, ev.row, this.hexRadius, this.ox, this.oy);
+                let roundedVal = Math.round(ev.val);
+                if (roundedVal === 0) continue;
+                let scoreTxt = (roundedVal > 0 ? '+' : '') + roundedVal.toLocaleString();
+
+                let hasUnit = !!(tile && (tile.unit || tile.pendingDeathVisual));
+                let textY = hasUnit ? (targetPt.y - this.hexRadius * 0.6) : (targetPt.y + 4);
+
+                let isMax = ev.val === maxVal;
+                this.ctx.font = 'bold ' + (isMax ? '13px' : '10px') + ' Inter, sans-serif';
+                this.ctx.fillStyle = isMax ? '#fbbf24' : (roundedVal > 0 ? '#86efac' : '#fca5a5');
+                this.ctx.shadowColor = 'black';
+                this.ctx.shadowBlur = 4;
+                this.ctx.textAlign = 'center';
+                this.ctx.fillText(scoreTxt, targetPt.x, textY);
                 this.ctx.shadowBlur = 0;
             }
         }

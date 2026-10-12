@@ -5,7 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>The Price of War</title>
-    <link rel="icon" href="data:;base64,iVBORw0KGgo=">
+    <link rel="icon" type="image/png" href="POW_fav.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
@@ -131,7 +131,7 @@
 
                 <!-- Left Frame (Blue Team) -->
                 <div id="left-frame"
-                    style="width: 250px; flex-shrink: 0; background: rgba(0,0,0,0.6); display: flex; flex-direction: column; align-items: center; padding: 20px 0; border-right: 1px solid rgba(255,255,255,0.1); z-index: 50;">
+                    style="width: 250px; flex-shrink: 0; background: rgba(0,0,0,0.6); display: flex; flex-direction: column; align-items: center; padding: 20px 0; border-right: 1px solid rgba(255,255,255,0.1); z-index: 50; position: relative;">
                     <div class="team-panel blue-team"
                         style="margin-bottom: 30px; width: 90%; display: flex; flex-direction: column; justify-content: center; align-items: center; background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 8px; padding: 15px 0;">
                         <h2 id="blue-name-plate"
@@ -144,21 +144,22 @@
                     </div>
 
                     <!-- Hex Overlays Config -->
-                    <div style="display: flex; gap: 20px; margin-top: 10px; margin-bottom: 20px;">
-                        <label class="hex-toggle-label w-hover"
+                    <div id="blue-hex-toggle-group" class="hex-toggle-group"
+                        style="display: flex; gap: 20px; margin-top: 10px; margin-bottom: 20px;">
+                        <label class="hex-toggle-label w-hover" title="Show/hide movement range overlay"
                             style="cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 5px;">
                             <input type="checkbox" id="chk-blue-cfg-blue" class="hex-toggle-input"
-                                style="display: none;">
+                                style="display: none;" checked>
                             <svg class="hex-blue-svg" width="36" height="36" viewBox="0 0 100 100"
                                 style="overflow: visible;">
                                 <polygon points="50,5 95,25 95,75 50,95 5,75 5,25" fill="rgba(59, 130, 246, 0.2)"
                                     stroke="#60a5fa" stroke-width="4"></polygon>
                             </svg>
                         </label>
-                        <label class="hex-toggle-label w-hover"
+                        <label class="hex-toggle-label w-hover" title="Show/hide movement range overlay"
                             style="cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 5px;">
-                            <input type="checkbox" id="chk-blue-cfg-red" class="hex-toggle-input"
-                                style="display: none;">
+                            <input type="checkbox" id="chk-blue-cfg-red" class="hex-toggle-input" style="display: none;"
+                                checked>
                             <svg class="hex-red-svg" width="36" height="36" viewBox="0 0 100 100"
                                 style="overflow: visible;">
                                 <polygon points="50,5 95,25 95,75 50,95 5,75 5,25" fill="rgba(239, 68, 68, 0.2)"
@@ -169,6 +170,69 @@
                     <!-- Empty container for dynamic insertion of matching Turn interface -->
                     <div id="left-turn-container"
                         style="flex: 1; display: flex; align-items: center; justify-content: center; width: 100%;">
+                    </div>
+
+                    <!-- AI INSIGHT BUTTON (Blue Player) -->
+                    <div id="blue-ai-container"
+                        style="margin-top: auto; margin-bottom: 20px; display: none; flex-direction: column; align-items: center; width: 100%; gap: 6px;">
+                        <div id="blue-ai-turn-label"
+                            style="font-size: 0.75rem; color: #60a5fa; display: none; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">
+                            Live State</div>
+
+                        <!-- AI THINKING INDICATOR (Blue Player) -->
+                        <div id="blue-ai-thinking-box"
+                            style="display: none; flex-direction: column; align-items: center; gap: 3px; width: 64px; margin-bottom: 2px;">
+                            <div style="display: flex; align-items: center; justify-content: center; gap: 4px;">
+                                <svg class="gear-spinner" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                                    stroke="#60a5fa" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                    <path
+                                        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+                                    </path>
+                                </svg>
+                                <span id="blue-ai-progress-text"
+                                    style="font-size: 0.65rem; color: #60a5fa; font-weight: 700; letter-spacing: 0.5px;">THINKING</span>
+                            </div>
+                            <div
+                                style="width: 100%; height: 5px; background: rgba(0,0,0,0.6); border: 1px solid rgba(96, 165, 250, 0.4); border-radius: 3px; overflow: hidden; box-shadow: 0 0 6px rgba(59,130,246,0.2);">
+                                <div id="blue-ai-progress-bar"
+                                    style="width: 0%; height: 100%; background: linear-gradient(90deg, #3b82f6, #93c5fd); border-radius: 2px; transition: width 0.1s ease;">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- TEACH AI DEBUG BUTTON (Blue Player) -->
+                        <button id="btn-blue-teach-ai" class="teach-ai-debug-btn w-hover"
+                            title="Teach AI — Flag Bot Mistake"
+                            style="display: none; align-items: center; justify-content: center; gap: 4px; padding: 3px 8px; border-radius: 6px; background: rgba(59, 130, 246, 0.2); border: 1px solid rgba(96, 165, 250, 0.6); color: #93c5fd; font-size: 0.7rem; font-weight: 600; cursor: pointer; margin-bottom: 4px; box-shadow: 0 0 8px rgba(59, 130, 246, 0.25);">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="m8 2 1.88 1.88" />
+                                <path d="M14.12 3.88 16 2" />
+                                <path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1" />
+                                <path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6" />
+                                <path d="M12 20v-9" />
+                                <path d="M6.53 9C4.6 8.8 3 7.1 3 5" />
+                                <path d="M6 13H2" />
+                                <path d="M3 21c0-2.1 1.7-3.9 3.8-4" />
+                                <path d="M20.97 5c0 2.1-1.6 3.8-3.5 4" />
+                                <path d="M22 13h-4" />
+                                <path d="M17.2 17c2.1.1 3.8 1.9 3.8 4" />
+                            </svg>
+                            <span>TEACH AI</span>
+                        </button>
+
+                        <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+                            <button id="btn-blue-ai-prev" class="btn-icon" title="Previous AI Turn"
+                                style="display: none; width: 34px; height: 34px; border-radius: 6px; background: rgba(59, 130, 246, 0.25); border: 1px solid rgba(59, 130, 246, 0.5); color: #fff; font-size: 1rem; cursor: pointer; align-items: center; justify-content: center; padding: 0;">◀</button>
+                            <div id="btn-blue-action-tree" class="w-hover" title="Toggle AI Scoring Heatmap"
+                                style="cursor: pointer; background: rgba(59, 130, 246, 0.2); border: 2px solid #60a5fa; border-radius: 8px; padding: 8px; display: flex; justify-content: center; align-items: center; transition: all 0.2s ease;">
+                                <img src="blue_robot.png"
+                                    style="width: 44px; height: 44px; object-fit: contain; display: block; mix-blend-mode: multiply;" />
+                            </div>
+                            <button id="btn-blue-ai-next" class="btn-icon" title="Next AI Turn"
+                                style="display: none; width: 34px; height: 34px; border-radius: 6px; background: rgba(59, 130, 246, 0.25); border: 1px solid rgba(59, 130, 246, 0.5); color: #fff; font-size: 1rem; cursor: pointer; align-items: center; justify-content: center; padding: 0;">▶</button>
+                        </div>
                     </div>
                 </div>
 
@@ -192,35 +256,157 @@
                     </div>
 
                     <!-- Interactive Help Panel floating -->
+                    <div id="help-overlay" class="hidden"
+                        style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.75); z-index: 150; cursor: pointer;">
+                    </div>
                     <div id="help-panel" class="glass-panel hidden"
-                        style="position: absolute; bottom: 20px; left: 20px; z-index: 60; width: 340px; padding: 15px; font-size: 0.85rem; line-height: 1.4; color: #eee; pointer-events: none;">
-                        <h2
-                            style="margin-top:0; color:#fff; margin-bottom: 10px; font-size: 1.2rem; font-weight: bold;">
-                            How to Play</h2>
+                        style="position: absolute; top: 10px; bottom: 5px; left: 20px; z-index: 200; width: 750px; display: flex; flex-direction: column; padding: 25px; padding-bottom: 15px; font-size: 0.95rem; line-height: 1.5; color: #eee; pointer-events: auto; box-shadow: 0 10px 40px rgba(0,0,0,0.9); border: 2px solid #fbbf24; backdrop-filter: blur(15px);">
 
-                        <h3 style="color:#60a5fa; margin-bottom: 5px; font-size: 1rem; font-weight: bold;">🎯 Goal</h3>
-                        <p id="help-goal-text" style="margin: 0 0 10px 0;"></p>
-
-                        <h3 style="color:#fcd34d; margin-bottom: 5px; font-size: 1rem; font-weight: bold;">⚔️ Deploy a
-                            Combat Unit</h3>
-                        <p style="margin: 0 0 10px 0;"><b>Left-click</b> an empty tile in your base.<br>Choose the
-                            unit's Speed and Power, then deploy.</p>
-
-                        <div id="help-section-flag">
-                            <h3 style="color:#a78bfa; margin-bottom: 5px; font-size: 1rem; font-weight: bold;">🚩 Deploy
-                                a Flag Unit</h3>
-                            <p style="margin: 0 0 10px 0;"><span style="color:#eee"><b>Right-click</b> an empty tile in
-                                    your base.<br>Choose the unit's Speed, then deploy.</span></p>
+                        <!-- Fixed Header -->
+                        <div
+                            style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; border-bottom: 1px solid rgba(255,255,255,0.2); padding-bottom: 10px; flex-shrink: 0;">
+                            <h2
+                                style="margin: 0; color:#fff; font-size: 1.6rem; font-weight: bold; text-transform: uppercase; letter-spacing: 1px;">
+                                How to Play</h2>
+                            <button id="btn-close-help" class="w-hover"
+                                style="background: none; border: none; color: #fff; font-size: 2rem; cursor: pointer; display: flex; align-items: center; line-height: 1;">&times;</button>
                         </div>
 
-                        <h3 style="color:#34d399; margin-bottom: 5px; font-size: 1rem; font-weight: bold;">➡️ Move a
-                            Unit</h3>
-                        <p style="margin: 0 0 10px 0;"><b>Left-click</b> a unit, then click its destination.</p>
+                        <!-- Scrollable Content -->
+                        <div style="flex: 1; overflow-y: auto; padding-right: 15px;">
+                            <h3 style="color:#60a5fa; margin: 0 0 5px 0; font-size: 1.15rem; font-weight: bold;">Goal —
+                                Two Game Modes</h3>
+                            <ul style="margin: 0 0 15px 0; padding-left: 20px;">
+                                <li style="margin-bottom: 6px;"><b style="color: #fff;">Invade Game</b> - First to move
+                                    any unit onto the enemy base wins.</li>
+                                <li style="margin-bottom: 6px;"><b style="color: #fff;">Plant Game</b> - First to move a
+                                    flag unit onto the enemy base wins.</li>
+                            </ul>
 
-                        <h3 style="color:#f87171; margin-bottom: 5px; font-size: 1rem; font-weight: bold;">🧱 Build a
-                            Barricade</h3>
-                        <p style="margin: 0;"><b>Right-click</b> a unit to turn it into a Barricade.<br>Use the mouse
-                            wheel to scroll through available barricade locations.</p>
+                            <h3 style="color:#fcd34d; margin: 10px 0 5px 0; font-size: 1.15rem; font-weight: bold;">Core
+                                Rules</h3>
+                            <ul style="margin: 0 0 15px 0; padding-left: 20px;">
+                                <li style="margin-bottom: 6px;"><b style="color: #fff;">Board</b> - hexagonal grid, two
+                                    players: Blue (base on left) and Red (base on right).</li>
+                                <li style="margin-bottom: 6px;"><b style="color: #fff;">Budget</b> - each player starts
+                                    with 0 units and a budget of 100 credits to deploy new units.</li>
+                                <li style="margin-bottom: 6px;"><b style="color: #fff;">Turn-Based:</b> One action per
+                                    turn: deploy, move, attack, barricade, or skip.</li>
+                                <li style="margin-bottom: 6px;"><b style="color: #fff;">Combat Resolution:</b> When a
+                                    unit moves
+                                    into a tile occupied by an enemy unit, combat ensues. Higher Power wins; ties favor
+                                    the attacker (mover). The loser is destroyed. The winner also loses 1 Power point
+                                    after the battle. If a unit's Power is reduced to 0, it dies.</li>
+                            </ul>
+
+                            <h3 style="color:#a78bfa; margin: 10px 0 5px 0; font-size: 1.15rem; font-weight: bold;">
+                                Units</h3>
+                            <ul style="margin: 0 0 15px 0; padding-left: 20px;">
+                                <li style="margin-bottom: 6px;"><b style="color: #fff;">Combat units:</b> Power 1–5,
+                                    Speed 1–5, cost = power × speed (1 to 25 credits).</li>
+                                <li style="margin-bottom: 6px;"><b style="color: #fff;">Flag units:</b> Power always 0,
+                                    Speed 1–5, cost = 5 × speed (5 to 25 credits).</li>
+                                <li style="margin-bottom: 6px;"><b style="color: #fff;">Observation units:</b> Weak
+                                    stationary observation unit, Power = 0, Speed = 0. Deployed behind a newly created
+                                    barricade and offers long distance visibility over a barricade.</li>
+                            </ul>
+
+                            <h3 style="color:#34d399; margin: 10px 0 5px 0; font-size: 1.15rem; font-weight: bold;">
+                                Actions</h3>
+                            <ul style="margin: 0 0 15px 0; padding-left: 20px;">
+                                <li style="margin-bottom: 12px;"><b style="color: #fff;">⚔️ Deploy Combat Unit:</b> Use
+                                    credits to create a new combat unit at your home base.<br><span
+                                        style="color:#ccc;"><i>(Action: <b>Left-click</b> an empty tile in your base
+                                            &rarr; Choose Speed and Power &rarr; Deploy)</i></span></li>
+
+                                <li style="margin-bottom: 12px;"><b style="color: #fff;">🚩 Deploy Flag Unit:</b> Use
+                                    credits to create a flag unit at your home base.<br><span
+                                        style="color:#ccc;"><i>(Action: <b>Right-click</b> an empty tile in your base
+                                            &rarr; Choose Speed &rarr; Deploy)</i></span></li>
+
+                                <li style="margin-bottom: 12px;"><b style="color: #fff;">➡️ Move Unit:</b> Move your own
+                                    unit into a vacant tile.<br><span style="color:#ccc;"><i>(Action: <b>Left-click</b>
+                                            a unit &rarr; Click vacant destination)</i></span></li>
+
+                                <li style="margin-bottom: 12px;"><b style="color: #fff;">💥 Attack Unit:</b> Move your
+                                    own unit into a tile occupied by an enemy unit.<br><span
+                                        style="color:#ccc;"><i>(Action: <b>Left-click</b> a unit &rarr; Click enemy
+                                            destination)</i></span></li>
+
+                                <li style="margin-bottom: 12px;"><b style="color: #fff;">🧱 Build Barricade:</b> A
+                                    combat unit converts itself into a barricade: a vertical block. Its length scales
+                                    with the converting unit's Power. Creating a barricade intrinsically deploys a
+                                    stationary observation unit just behind it, penetrating the enemy's fog-of-war while
+                                    blocking theirs.<br><span style="color:#ccc;"><i>(Action: <b>Right-click</b> a unit
+                                            &rarr; Scroll mouse-wheel to rotate)</i></span></li>
+                            </ul>
+
+                            <h3 style="color:#f472b6; margin: 10px 0 5px 0; font-size: 1.15rem; font-weight: bold;">User
+                                Interface Tips</h3>
+                            <ul style="margin: 0 0 5px 0; padding-left: 20px; list-style: none;">
+                                <li style="margin-bottom: 12px; display: flex; align-items: flex-start; gap: 10px;">
+                                    <div style="display:flex; gap: 4px; padding-top: 3px; flex-shrink: 0;">
+                                        <svg width="18" height="18" viewBox="0 0 100 100">
+                                            <polygon points="50,5 95,25 95,75 50,95 5,75 5,25"
+                                                fill="rgba(59, 130, 246, 0.4)" stroke="#60a5fa" stroke-width="8">
+                                            </polygon>
+                                        </svg>
+                                        <svg width="18" height="18" viewBox="0 0 100 100">
+                                            <polygon points="50,5 95,25 95,75 50,95 5,75 5,25"
+                                                fill="rgba(239, 68, 68, 0.4)" stroke="#f87171" stroke-width="8">
+                                            </polygon>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <b style="color: #fff;">Movement Range Overlay:</b> Toggle an overlay that
+                                        highlights the tiles each army can reach.<br>
+                                        <i style="color:#ccc; font-size:0.9rem;">Note: When an enemy unit's speed is
+                                            unknown (too far away), its range slowly pulses to show possible reach.</i>
+                                    </div>
+                                </li>
+
+                                <li style="margin-bottom: 12px; display: flex; align-items: flex-start; gap: 10px;">
+                                    <div style="padding-top: 2px; flex-shrink: 0;">
+                                        <svg width="24" height="24" viewBox="0 0 40 40" style="vertical-align: middle;">
+                                            <circle cx="20" cy="20" r="15" fill="none" stroke="#ef4444"
+                                                stroke-width="2.5" stroke-dasharray="21 10.41"
+                                                transform="rotate(20 20 20)"></circle>
+                                            <circle cx="20" cy="20" r="10" fill="#ef4444"></circle>
+                                            <text x="20" y="24" font-family="'Inter', sans-serif" font-size="12"
+                                                font-weight="bold" fill="white" text-anchor="middle">5</text>
+                                        </svg>
+                                    </div>
+                                    <div>
+                                        <b style="color: #fff;">Hover Mechanics:</b> Hover over any unit to see three
+                                        ranges at once:<br>
+                                        (a) <span style="color:#60a5fa; font-weight:bold;">Moving range</span> (inner
+                                        blue/red outline): tiles it can reach in one turn<br>
+                                        (b) <span style="color:#fbbf24; font-weight:bold;">Inspecting range</span>
+                                        (middle): see enemy power and speed<br>
+                                        (c) <span style="color:#9ca3af; font-weight:bold;">Spotting range</span>
+                                        (outer): see enemy locations, but not their details
+                                    </div>
+                                </li>
+
+                                <li style="margin-bottom: 12px; display: flex; align-items: center; gap: 10px;">
+                                    <div style="flex-shrink: 0;">
+                                        <span
+                                            style="display:inline-flex; align-items:center; justify-content:center; border: 1px solid rgba(255,255,255,0.4); border-radius: 4px; width:22px; height: 22px; font-weight:bold; background:rgba(255,255,255,0.2); font-size: 13px;">?</span>
+                                    </div>
+                                    <div>
+                                        <b style="color: #fff;">Help Guide:</b> Open this floating tactical manual.
+                                    </div>
+                                </li>
+
+                                <li style="margin-bottom: 12px; display: flex; align-items: center; gap: 10px;">
+                                    <div style="font-size: 18px; flex-shrink: 0; padding-bottom: 2px;">⏳</div>
+                                    <div>
+                                        <b style="color: #fff;">Time Machine:</b> Review past rounds and travel
+                                        backwards in time to analyze your tactical history.
+                                    </div>
+                                </li>
+                            </ul>
+                        </div>
                     </div>
 
                     <!-- Contextual Popup Menu -->
@@ -270,7 +456,67 @@
 
                 <!-- Right Frame (Red Team) -->
                 <div id="right-frame"
-                    style="width: 250px; flex-shrink: 0; background: rgba(0,0,0,0.6); display: flex; flex-direction: column; align-items: center; padding: 20px 0; border-left: 1px solid rgba(255,255,255,0.1); z-index: 50;">
+                    style="width: 250px; flex-shrink: 0; background: rgba(0,0,0,0.6); display: flex; flex-direction: column; align-items: center; padding: 20px 0; border-left: 1px solid rgba(255,255,255,0.1); z-index: 50; position: relative;">
+
+                    <!-- TEACH AI FEEDBACK & REPORT PANEL -->
+                    <div id="teach-ai-panel" class="teach-ai-panel hidden">
+                        <div class="teach-ai-header">
+                            <div class="teach-ai-title">
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#ef4444"
+                                    stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="m8 2 1.88 1.88" />
+                                    <path d="M14.12 3.88 16 2" />
+                                    <path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1" />
+                                    <path
+                                        d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6" />
+                                    <path d="M12 20v-9" />
+                                </svg>
+                                <span>Teach AI (Flag Mistake)</span>
+                            </div>
+                            <button id="btn-close-teach-ai" class="teach-ai-close" title="Close Panel">✕</button>
+                        </div>
+
+                        <!-- Active tile picker notification -->
+                        <div id="teach-ai-tile-hint" class="teach-ai-tile-hint">
+                            Type <span class="teach-ai-key">@</span> or click <strong>Pick Tile</strong>, then click any
+                            hex on the board to insert coordinates &amp; score.
+                        </div>
+                        <div id="teach-ai-tile-active" class="teach-ai-tile-active hidden">
+                            <span>📍 Click a tile on the board to insert location &amp; score...</span>
+                        </div>
+
+                        <!-- Form Section -->
+                        <div id="teach-ai-input-view">
+                            <textarea id="teach-ai-feedback-text" class="teach-ai-textarea" rows="4"
+                                placeholder="Explain the bot's mistake. E.g.: 'The bot should not have moved to @ because Blue can eliminate it...'"></textarea>
+
+                            <div class="teach-ai-actions">
+                                <button id="btn-teach-ai-pick-tile" class="btn-teach-secondary"
+                                    title="Click to pick a tile on the board">📍 Pick Tile</button>
+                                <button id="btn-teach-ai-clear" class="btn-teach-secondary"
+                                    title="Clear text">Clear</button>
+                                <button id="btn-teach-ai-submit" class="btn-teach-primary">Submit Report</button>
+                            </div>
+                        </div>
+
+                        <!-- Generated Report Section (shown after submit) -->
+                        <div id="teach-ai-report-view" class="hidden">
+                            <div class="teach-ai-report-controls">
+                                <button id="btn-teach-ai-copy" class="btn-teach-copy">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                        <rect width="14" height="14" x="8" y="8" rx="2" ry="2" />
+                                        <path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" />
+                                    </svg>
+                                    <span id="teach-ai-copy-text">Copy Report</span>
+                                </button>
+                                <button id="btn-teach-ai-edit" class="btn-teach-secondary">Edit Feedback</button>
+                            </div>
+                            <div id="teach-ai-report-container" class="teach-ai-report-scroll">
+                                <pre id="teach-ai-report-pre"></pre>
+                            </div>
+                        </div>
+                    </div>
                     <div class="team-panel red-team"
                         style="margin-bottom: 30px; width: 90%; display: flex; flex-direction: column; justify-content: center; align-items: center; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.4); border-radius: 8px; padding: 15px 0;">
                         <h2 id="red-name-plate"
@@ -283,8 +529,9 @@
                     </div>
 
                     <!-- Hex Overlays Config -->
-                    <div style="display: flex; gap: 20px; margin-top: 10px; margin-bottom: 20px;">
-                        <label class="hex-toggle-label w-hover"
+                    <div id="red-hex-toggle-group" class="hex-toggle-group"
+                        style="display: flex; gap: 20px; margin-top: 10px; margin-bottom: 20px;">
+                        <label class="hex-toggle-label w-hover" title="Show/hide movement range overlay"
                             style="cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 5px;">
                             <input type="checkbox" id="chk-red-cfg-blue" class="hex-toggle-input"
                                 style="display: none;">
@@ -294,7 +541,7 @@
                                     stroke="#60a5fa" stroke-width="4"></polygon>
                             </svg>
                         </label>
-                        <label class="hex-toggle-label w-hover"
+                        <label class="hex-toggle-label w-hover" title="Show/hide movement range overlay"
                             style="cursor: pointer; display: flex; flex-direction: column; align-items: center; gap: 5px;">
                             <input type="checkbox" id="chk-red-cfg-red" class="hex-toggle-input" style="display: none;">
                             <svg class="hex-red-svg" width="36" height="36" viewBox="0 0 100 100"
@@ -309,17 +556,67 @@
                         style="flex: 1; display: flex; align-items: center; justify-content: center; width: 100%;">
                     </div>
 
-                    <!-- AI INSIGHT BUTTONS (Completely independent from turn swapping) -->
-                    <div
-                        style="display: flex; flex-direction: column; width: 90%; gap: 8px; margin-top: auto; margin-bottom: 20px;">
-                        <button id="btn-ai-action-tree" class="btn-primary w-hover"
-                            style="background: linear-gradient(135deg, #8b5cf6, #6d28d9); font-size: 0.75rem; padding: 8px; width: 100%;">
-                            HOLD: Action Tree
+                    <!-- AI INSIGHT BUTTON (Red Player) -->
+                    <div id="red-ai-container"
+                        style="margin-top: auto; margin-bottom: 20px; display: none; flex-direction: column; align-items: center; width: 100%; gap: 6px;">
+                        <div id="red-ai-turn-label"
+                            style="font-size: 0.75rem; color: #f87171; display: none; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px;">
+                            Live State</div>
+
+                        <!-- AI THINKING INDICATOR (Red Player) -->
+                        <div id="red-ai-thinking-box"
+                            style="display: none; flex-direction: column; align-items: center; gap: 3px; width: 64px; margin-bottom: 2px;">
+                            <div style="display: flex; align-items: center; justify-content: center; gap: 4px;">
+                                <svg class="gear-spinner" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                                    stroke="#f87171" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <circle cx="12" cy="12" r="3"></circle>
+                                    <path
+                                        d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z">
+                                    </path>
+                                </svg>
+                                <span id="red-ai-progress-text"
+                                    style="font-size: 0.65rem; color: #f87171; font-weight: 700; letter-spacing: 0.5px;">THINKING</span>
+                            </div>
+                            <div
+                                style="width: 100%; height: 5px; background: rgba(0,0,0,0.6); border: 1px solid rgba(248, 113, 113, 0.4); border-radius: 3px; overflow: hidden; box-shadow: 0 0 6px rgba(239,68,68,0.2);">
+                                <div id="red-ai-progress-bar"
+                                    style="width: 0%; height: 100%; background: linear-gradient(90deg, #ef4444, #fca5a5); border-radius: 2px; transition: width 0.1s ease;">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- TEACH AI DEBUG BUTTON (Red Player) -->
+                        <button id="btn-red-teach-ai" class="teach-ai-debug-btn w-hover"
+                            title="Teach AI — Flag Bot Mistake"
+                            style="display: none; align-items: center; justify-content: center; gap: 4px; padding: 3px 8px; border-radius: 6px; background: rgba(239, 68, 68, 0.2); border: 1px solid rgba(248, 113, 113, 0.6); color: #fca5a5; font-size: 0.7rem; font-weight: 600; cursor: pointer; margin-bottom: 4px; box-shadow: 0 0 8px rgba(239, 68, 68, 0.25);">
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="m8 2 1.88 1.88" />
+                                <path d="M14.12 3.88 16 2" />
+                                <path d="M9 7.13v-1a3.003 3.003 0 1 1 6 0v1" />
+                                <path d="M12 20c-3.3 0-6-2.7-6-6v-3a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v3c0 3.3-2.7 6-6 6" />
+                                <path d="M12 20v-9" />
+                                <path d="M6.53 9C4.6 8.8 3 7.1 3 5" />
+                                <path d="M6 13H2" />
+                                <path d="M3 21c0-2.1 1.7-3.9 3.8-4" />
+                                <path d="M20.97 5c0 2.1-1.6 3.8-3.5 4" />
+                                <path d="M22 13h-4" />
+                                <path d="M17.2 17c2.1.1 3.8 1.9 3.8 4" />
+                            </svg>
+                            <span>TEACH AI</span>
                         </button>
-                        <button id="btn-ai-heatmap" class="btn-primary w-hover"
-                            style="background: linear-gradient(135deg, #f59e0b, #b45309); font-size: 0.75rem; padding: 8px; width: 100%;">
-                            HOLD: Terrain Heatmap
-                        </button>
+
+                        <div style="display: flex; align-items: center; justify-content: center; gap: 8px;">
+                            <button id="btn-red-ai-prev" class="btn-icon" title="Previous AI Turn"
+                                style="display: none; width: 34px; height: 34px; border-radius: 6px; background: rgba(239, 68, 68, 0.25); border: 1px solid rgba(239, 68, 68, 0.5); color: #fff; font-size: 1rem; cursor: pointer; align-items: center; justify-content: center; padding: 0;">◀</button>
+                            <div id="btn-red-action-tree" class="w-hover" title="Toggle AI Scoring Heatmap"
+                                style="cursor: pointer; background: rgba(239, 68, 68, 0.2); border: 2px solid #f87171; border-radius: 8px; padding: 8px; display: flex; justify-content: center; align-items: center; transition: all 0.2s ease;">
+                                <img src="red_robot.png"
+                                    style="width: 44px; height: 44px; object-fit: contain; display: block; mix-blend-mode: multiply;" />
+                            </div>
+                            <button id="btn-red-ai-next" class="btn-icon" title="Next AI Turn"
+                                style="display: none; width: 34px; height: 34px; border-radius: 6px; background: rgba(239, 68, 68, 0.25); border: 1px solid rgba(239, 68, 68, 0.5); color: #fff; font-size: 1rem; cursor: pointer; align-items: center; justify-content: center; padding: 0;">▶</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -532,7 +829,7 @@
     </div>
     </div>
 
-    <script src="js/bundle.js?v=1790568828693"></script>
+    <script src="js/bundle.js?v=20261011i"></script>
 </body>
 
 </html>

@@ -2,3 +2,7 @@ node_modules/
 .gemini/
 *.log
 .DS_Store
+*.txt
+*.patch
+temp_initial.html
+

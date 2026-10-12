@@ -95,6 +95,7 @@ body {
     margin-bottom: 0.25rem;
     background: linear-gradient(90deg, var(--accent-blue), var(--accent-purple));
     -webkit-background-clip: text;
+    background-clip: text;
     -webkit-text-fill-color: transparent;
 }
 
@@ -361,7 +362,7 @@ button:disabled {
     padding: 1rem;
     pointer-events: auto;
     box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
-    
+
 }
 
 #context-header {
@@ -631,6 +632,7 @@ button:disabled {
     background: #ef4444;
     border-color: rgba(239, 68, 68, 0.5);
 }
+
 .btn-primary.btn-red:hover {
     background: #b91c1c;
     box-shadow: 0 0 15px rgba(239, 68, 68, 0.6);
@@ -646,7 +648,272 @@ button:disabled {
     font-size: 1.5rem !important;
     z-index: 1000 !important;
 }
+
 .history-prominent button {
     font-size: 1.2rem !important;
     padding: 10px 20px !important;
+}
+
+/* Interactive SVG Checkbox Settings */
+.hex-toggle-label svg {
+    transition: all 0.2s ease-in-out;
+}
+
+.hex-toggle-label:hover.w-hover svg {
+    filter: drop-shadow(0 0 4px rgba(255, 255, 255, 0.4));
+}
+
+.hex-toggle-input:checked+svg.hex-blue-svg polygon {
+    fill: #60a5fa !important;
+}
+
+.hex-toggle-input:checked+svg.hex-red-svg polygon {
+    fill: #f87171 !important;
+}
+
+/* AI Thinking Gear Animation */
+@keyframes gearSpin {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.gear-spinner {
+    animation: gearSpin 1.4s linear infinite;
+    transform-origin: center center;
+    flex-shrink: 0;
+}
+
+/* Teach AI Feature Styles */
+.teach-ai-debug-btn {
+    transition: all 0.2s ease;
+}
+
+.teach-ai-debug-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 0 12px rgba(239, 68, 68, 0.45) !important;
+}
+
+.teach-ai-panel {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    max-height: 92%;
+    background: rgba(15, 23, 42, 0.96);
+    backdrop-filter: blur(12px);
+    border-bottom: 2px solid #ef4444;
+    border-radius: 0 0 12px 12px;
+    box-shadow: 0 14px 35px rgba(0, 0, 0, 0.85);
+    z-index: 100;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    box-sizing: border-box;
+    overflow-y: auto;
+    font-family: 'Inter', sans-serif;
+}
+
+.teach-ai-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.teach-ai-title {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: #fca5a5;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.teach-ai-close {
+    background: transparent;
+    border: none;
+    color: #94a3b8;
+    font-size: 1.1rem;
+    cursor: pointer;
+    line-height: 1;
+    padding: 2px 6px;
+    border-radius: 4px;
+    transition: all 0.15s ease;
+}
+
+.teach-ai-close:hover {
+    color: #fff;
+    background: rgba(239, 68, 68, 0.25);
+}
+
+.teach-ai-tile-hint {
+    font-size: 0.72rem;
+    color: #94a3b8;
+    line-height: 1.35;
+    margin-bottom: 8px;
+    background: rgba(0, 0, 0, 0.35);
+    padding: 6px 8px;
+    border-radius: 6px;
+    border-left: 2px solid #60a5fa;
+}
+
+.teach-ai-key {
+    background: rgba(96, 165, 250, 0.2);
+    color: #93c5fd;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-weight: bold;
+}
+
+.teach-ai-tile-active {
+    font-size: 0.72rem;
+    color: #fef08a;
+    font-weight: 600;
+    margin-bottom: 8px;
+    background: rgba(234, 179, 8, 0.15);
+    border: 1px solid rgba(234, 179, 8, 0.4);
+    padding: 6px 8px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    animation: pulseGlow 1.5s infinite alternate;
+}
+
+@keyframes pulseGlow {
+    from {
+        box-shadow: 0 0 4px rgba(234, 179, 8, 0.2);
+    }
+
+    to {
+        box-shadow: 0 0 10px rgba(234, 179, 8, 0.5);
+    }
+}
+
+.teach-ai-textarea {
+    width: 100%;
+    min-height: 90px;
+    max-height: 180px;
+    background: rgba(0, 0, 0, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.15);
+    border-radius: 6px;
+    color: #f1f5f9;
+    padding: 8px;
+    font-size: 0.78rem;
+    font-family: inherit;
+    resize: vertical;
+    box-sizing: border-box;
+    margin-bottom: 10px;
+    outline: none;
+    transition: border-color 0.2s ease;
+}
+
+.teach-ai-textarea:focus {
+    border-color: #f87171;
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.3);
+}
+
+.teach-ai-actions {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+    align-items: center;
+}
+
+.btn-teach-secondary {
+    background: rgba(255, 255, 255, 0.08);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #cbd5e1;
+    font-size: 0.72rem;
+    padding: 5px 8px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.15s ease;
+}
+
+.btn-teach-secondary:hover {
+    background: rgba(255, 255, 255, 0.15);
+    color: #fff;
+}
+
+.btn-teach-primary {
+    background: linear-gradient(135deg, #ef4444, #b91c1c);
+    border: 1px solid #f87171;
+    color: #fff;
+    font-size: 0.75rem;
+    padding: 5px 12px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all 0.15s ease;
+    box-shadow: 0 2px 8px rgba(239, 68, 68, 0.35);
+}
+
+.btn-teach-primary:hover {
+    filter: brightness(1.15);
+    transform: translateY(-1px);
+}
+
+.teach-ai-report-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 8px;
+    gap: 6px;
+}
+
+.btn-teach-copy {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: linear-gradient(135deg, #10b981, #059669);
+    border: 1px solid #34d399;
+    color: #fff;
+    font-size: 0.75rem;
+    padding: 6px 12px;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    transition: all 0.15s ease;
+    box-shadow: 0 2px 8px rgba(16, 185, 129, 0.35);
+}
+
+.btn-teach-copy:hover {
+    filter: brightness(1.15);
+    transform: translateY(-1px);
+}
+
+.btn-teach-copy.copied {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    border-color: #60a5fa;
+}
+
+.teach-ai-report-scroll {
+    max-height: 250px;
+    overflow-y: auto;
+    background: rgba(0, 0, 0, 0.7);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 6px;
+    padding: 8px;
+}
+
+.teach-ai-report-scroll pre {
+    margin: 0;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-size: 0.68rem;
+    color: #cbd5e1;
+    white-space: pre-wrap;
+    word-break: break-word;
+    user-select: text;
 }

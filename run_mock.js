@@ -1,6 +1,6 @@
 const fs = require('fs');
 const hexCode = fs.readFileSync('js/hex.js', 'utf8').replace(/export const/g, 'const');
-const aiCode = fs.readFileSync('js/ai.js', 'utf8').replace(/export class/g, 'class').replace(/import.*?\;/g, '');
+const aiCode = fs.readFileSync('js/ai-v1.js', 'utf8').replace(/export class/g, 'class').replace(/import.*?\;/g, '');
 
 const tester = `
 ${hexCode}
@@ -38,4 +38,4 @@ try {
     console.log("AI TRACE:", err.stack);
 }
 `;
-fs.writeFileSync('test_ai.js', tester, 'utf8');
+fs.writeFileSync('test_ai-v1.js', tester, 'utf8');

@@ -108,7 +108,12 @@ export class HexGame {
             combats: [...this.activeCombats]
         };
         for (let [k, v] of this.board.entries()) {
-            snap.board.set(k, { unit: v.unit ? { ...v.unit } : null, isBarricade: v.isBarricade });
+            let uCopy = null;
+            if (v.unit) {
+                uCopy = { ...v.unit };
+                delete uCopy.isAnimating;
+            }
+            snap.board.set(k, { unit: uCopy, isBarricade: v.isBarricade });
         }
         snap.lastMove = this.lastMove ? { ...this.lastMove } : null;
         // Save and increment
@@ -123,6 +128,9 @@ export class HexGame {
 
         if (this.ui && this.ui.render) {
             this.ui.render.clearExplosions();
+            if (typeof this.ui.render.clearMoveAnimations === 'function') {
+                this.ui.render.clearMoveAnimations();
+            }
         }
 
         let steppedForward = (index === this.historyIndex + 1);
@@ -134,7 +142,12 @@ export class HexGame {
         // Restore deep copy
         this.board = new Map();
         for (let [k, v] of snap.board.entries()) {
-            this.board.set(k, { unit: v.unit ? { ...v.unit } : null, isBarricade: v.isBarricade });
+            let uCopy = null;
+            if (v.unit) {
+                uCopy = { ...v.unit };
+                delete uCopy.isAnimating;
+            }
+            this.board.set(k, { unit: uCopy, isBarricade: v.isBarricade });
         }
         this.credits = { ...snap.credits };
         this.activeTeam = snap.activeTeam;
@@ -147,7 +160,8 @@ export class HexGame {
             snap.combats.forEach(coord => this.onCombat(coord.c, coord.r, true));
         }
 
-        if (this.ui && this.ui.render) {
+        const isHeatmapActive = (this.ui && this.ui.showAIHeatmap);
+        if (this.ui && this.ui.render && !isHeatmapActive) {
             if (steppedForward && snap.lastMove) {
                 const trgt = this.getTile(snap.lastMove.eC, snap.lastMove.eR).unit;
                 this.ui.render.addMoveAnimation(snap.lastMove.sC, snap.lastMove.sR, snap.lastMove.eC, snap.lastMove.eR, snap.lastMove.unit, 500, trgt);
@@ -383,6 +397,9 @@ export class HexGame {
         let currC = startCol;
         let currR = startRow;
 
+        let collisionC = startCol;
+        let collisionR = startRow;
+
         let survived = true;
         // Travel the path (index 1 to end, skipping start)
         for (let i = 1; i < path.length; i++) {
@@ -409,14 +426,20 @@ export class HexGame {
 
                 if (attackerWins) {
                     this.logAction(u.team, `Combat: ${u.strength} Power defeated ${defender.strength} Power at [${trgC},${trgR}].`, true);
+                    targetTile.pendingDeathVisual = { ...defender };
                     targetTile.unit = null;
 
                     if (this.config.powerMode === 'DEPLETING' && !defender.isFlag && !u.isFlag) {
                         u.strength--;
                         if (u.strength <= 0) {
                             survived = false;
+                            this.getTile(currC, currR).pendingDeathVisual = { ...u };
                             this.getTile(currC, currR).unit = null;
                             this.logAction(u.team, `Combat: ${u.team} unit succumbed to exhaustion after battle at [${trgC},${trgR}].`, true);
+                            this.activeCombats.push({ c: currC, r: currR });
+                            if (this.onCombat) this.onCombat(currC, currR);
+                            collisionC = trgC;
+                            collisionR = trgR;
                             break;
                         }
                     }
@@ -424,13 +447,21 @@ export class HexGame {
                 } else {
                     this.logAction(u.team, `Combat: ${u.strength} Power died attacking ${defender.strength} Power at [${trgC},${trgR}].`, true);
                     survived = false;
+                    this.getTile(currC, currR).pendingDeathVisual = { ...u };
                     this.getTile(currC, currR).unit = null; // attacker dead, erase from current step
+                    this.activeCombats.push({ c: currC, r: currR });
+                    if (this.onCombat) this.onCombat(currC, currR);
+                    collisionC = trgC;
+                    collisionR = trgR;
 
                     if (this.config.powerMode === 'DEPLETING' && !defender.isFlag && !u.isFlag) {
                         defender.strength--;
                         if (defender.strength <= 0) {
+                            targetTile.pendingDeathVisual = { ...defender };
                             targetTile.unit = null;
                             this.logAction(defender.team, `Combat: ${defender.team} defender succumbed to exhaustion after battle at [${trgC},${trgR}].`, true);
+                            this.activeCombats.push({ c: trgC, r: trgR });
+                            if (this.onCombat) this.onCombat(trgC, trgR);
                         } else {
                             defender.exposedCounter = 2; // Defender survived and is visibly exposed
                         }
@@ -451,14 +482,15 @@ export class HexGame {
             currR = trgR;
         }
 
-        if (currC !== startCol || currR !== startRow) {
-            this.lastMove = { sC: startCol, sR: startRow, eC: currC, eR: currR, unit: { ...u } };
+        let endC = survived ? currC : collisionC;
+        let endR = survived ? currR : collisionR;
+
+        if (endC !== startCol || endR !== startRow) {
+            this.lastMove = { sC: startCol, sR: startRow, eC: endC, eR: endR, unit: { ...u } };
             if (this.ui && this.ui.render) {
                 const trgt = survived ? this.getTile(currC, currR).unit : null;
-                this.ui.render.addMoveAnimation(startCol, startRow, currC, currR, { ...u }, 500, trgt);
+                this.ui.render.addMoveAnimation(startCol, startRow, endC, endR, { ...u }, 500, trgt);
             }
-        } else if (!survived) {
-            this.lastMove = { sC: startCol, sR: startRow, eC: currC, eR: currR, unit: { ...u } };
         }
 
         this.actionUsed = true;
@@ -511,46 +543,14 @@ export class HexGame {
     }
 
     getBarricadeFootprint(col, row, power, offset) {
-        const length = Math.floor((power + 1) / 2) + 1;
+        const length = Math.max(1, power || 1);
         const actualOffset = offset !== undefined ? offset : Math.floor(length / 2);
         const startRow = row - actualOffset;
-        const endRow = startRow + length - 1;
 
         let footprint = [];
-        // Core vertical spine
+        // Straight vertical line with length equal to unit's strength
         for (let i = 0; i < length; i++) {
             footprint.push({ col: col, row: startRow + i });
-        }
-
-        // C-shape wings pointing towards enemy home along continuous diagonals
-        let team = this.activeTeam;
-        if (this.isValid(col, row) && this.getTile(col, row).unit) {
-            team = this.getTile(col, row).unit.team;
-        }
-
-        let wingDepth = (power >= 4) ? 2 : 1;
-
-        let topAxial = hexMath.offsetToAxial(col, startRow);
-        let botAxial = hexMath.offsetToAxial(col, endRow);
-
-        // Blue pushes Top-Right (+1, -1) and Bottom-Right (+1, 0)
-        // Red pushes Top-Left (-1, 0) and Bottom-Left (-1, +1)
-        let topVector = team === 'BLUE' ? { dq: 1, dr: -1 } : { dq: -1, dr: 0 };
-        let botVector = team === 'BLUE' ? { dq: 1, dr: 0 } : { dq: -1, dr: 1 };
-
-        let curTop = { q: topAxial.q, r: topAxial.r };
-        let curBot = { q: botAxial.q, r: botAxial.r };
-
-        for (let d = 1; d <= wingDepth; d++) {
-            curTop.q += topVector.dq;
-            curTop.r += topVector.dr;
-            let topOff = hexMath.axialToOffset(curTop.q, curTop.r);
-            footprint.push({ col: topOff.col, row: topOff.row });
-
-            curBot.q += botVector.dq;
-            curBot.r += botVector.dr;
-            let botOff = hexMath.axialToOffset(curBot.q, curBot.r);
-            footprint.push({ col: botOff.col, row: botOff.row });
         }
 
         return footprint;
@@ -663,18 +663,25 @@ export class HexGame {
         return true;
     }
 
-    getFogOfWar(col, row, perspective) {
+    getFogOfWar(col, row, perspective, specificUnit = null) {
         if (this.config.mode === 'VISIBLE' || this.isGameOver) return false;
 
         const tile = this.getTile(col, row);
-        if (!tile || !tile.unit) return false;
+        if (!tile) return false;
 
-        const isEnemy = tile.unit.team !== perspective;
+        let checkUnit = specificUnit;
+        if (!checkUnit) {
+            checkUnit = tile.unit || tile.pendingDeathVisual;
+        }
+
+        if (!checkUnit) return false;
+
+        const isEnemy = checkUnit.team !== perspective;
         if (!isEnemy) return false;
 
-        if (tile.unit.type === 'observation') return false;
+        if (checkUnit.type === 'observation') return false;
 
-        if (tile.unit.exposedCounter && tile.unit.exposedCounter > 0) return false;
+        if (checkUnit.exposedCounter && checkUnit.exposedCounter > 0) return false;
 
         if (this.config.mode === 'HIDDEN') return true;
 
@@ -682,12 +689,16 @@ export class HexGame {
             for (let c = 0; c < this.cols; c++) {
                 for (let r = 0; r < this.rows; r++) {
                     const t = this.getTile(c, r);
-                    if (t.unit && t.unit.team === perspective) {
-                        let viewRange = this.config.maxSpeed + 2;
+                    if (!t) continue;
 
-                        if (hexMath.offsetDistance(col, row, c, r) <= viewRange) {
-                            return false; // Found a friendly unit close enough
-                        }
+                    let viewRange = this.config.maxSpeed + 2;
+                    let dist = hexMath.offsetDistance(col, row, c, r);
+
+                    if (t.unit && t.unit.team === perspective && dist <= viewRange) {
+                        return false;
+                    }
+                    if (t.pendingDeathVisual && t.pendingDeathVisual.team === perspective && dist <= viewRange) {
+                        return false;
                     }
                 }
             }
@@ -705,8 +716,12 @@ export class HexGame {
         for (let col = 0; col < this.cols; col++) {
             for (let row = 0; row < this.rows; row++) {
                 const t = this.getTile(col, row);
+                if (!t) continue;
                 if (t.unit && t.unit.team === perspectiveTeam) {
                     myUnits.push({ col, row, type: t.unit.type });
+                }
+                if (t.pendingDeathVisual && t.pendingDeathVisual.team === perspectiveTeam) {
+                    myUnits.push({ col, row, type: t.pendingDeathVisual.type });
                 }
             }
         }

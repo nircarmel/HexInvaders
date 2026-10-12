@@ -1,6 +1,6 @@
-const fs = require('fs');
+import fs from 'fs';
 let combined = '';
-for (const f of ['hex.js', 'unit.js', 'game.js', 'input.js', 'render.js', 'ui.js', 'network.js', 'ai.js', 'main.js']) {
+for (const f of ['hex.js', 'unit.js', 'game.js', 'input.js', 'render.js', 'ui.js', 'network.js', 'genes-v1.js', 'genes-v2.js', 'ai-v1.js', 'ai-v2.js', 'main.js']) {
     let cnt = fs.readFileSync('js/' + f, 'utf8');
     // Remove "export " and "import ... " syntax since we are combining them globally
     cnt = cnt.replace(/export class/g, 'class');

@@ -5,6 +5,7 @@ export class UIManager {
     constructor(game, render, input) {
         this.game = game;
         this.render = render;
+        if (this.render) this.render.ui = this;
         this.input = input;
 
         this.currentAction = null; // 'MOVE', 'WAITING_MOVE'
@@ -60,53 +61,57 @@ export class UIManager {
         // Help Modal interactions
         const btnHelp = document.getElementById('btn-help');
         const helpPanel = document.getElementById('help-panel');
+        const btnCloseHelp = document.getElementById('btn-close-help');
+        const helpOverlay = document.getElementById('help-overlay');
         if (btnHelp && helpPanel) {
-            const showHelp = () => helpPanel.classList.remove('hidden');
-            const hideHelp = () => helpPanel.classList.add('hidden');
+            btnHelp.addEventListener('click', () => {
+                helpPanel.classList.toggle('hidden');
+                if (helpOverlay) helpOverlay.classList.toggle('hidden');
+            });
 
-            btnHelp.addEventListener('mousedown', showHelp);
-            btnHelp.addEventListener('touchstart', showHelp);
+            const closePanels = () => {
+                helpPanel.classList.add('hidden');
+                if (helpOverlay) helpOverlay.classList.add('hidden');
+            };
 
-            btnHelp.addEventListener('mouseup', hideHelp);
-            btnHelp.addEventListener('mouseleave', hideHelp);
-            btnHelp.addEventListener('touchend', hideHelp);
+            if (btnCloseHelp) {
+                btnCloseHelp.addEventListener('click', closePanels);
+            }
+            if (helpOverlay) {
+                helpOverlay.addEventListener('click', closePanels);
+            }
         }
 
         // Map AI insight visual flags natively
         this.showAIActionTree = false;
         this.showAIHeatmap = false;
+        this.aiHeatmapTeam = null;
 
-        const btnAiTree = document.getElementById('btn-ai-action-tree');
-        if (btnAiTree) {
-            btnAiTree.addEventListener('mousedown', () => {
-                if (this.game.aiBot) this.game.aiActionTreeCache = this.game.aiBot.generateActionTreeValues(this.game.aiBot.cloneState(), 'RED');
-                this.showAIActionTree = true;
+        const btnAiTreeBlue = document.getElementById('btn-blue-action-tree');
+        if (btnAiTreeBlue) {
+            btnAiTreeBlue.addEventListener('click', () => {
+                this.toggleAIHeatmap('BLUE');
             });
-            btnAiTree.addEventListener('mouseup', () => { this.showAIActionTree = false; });
-            btnAiTree.addEventListener('mouseleave', () => { this.showAIActionTree = false; });
-            btnAiTree.addEventListener('touchstart', (e) => {
-                e.preventDefault();
-                if (this.game.aiBot) this.game.aiActionTreeCache = this.game.aiBot.generateActionTreeValues(this.game.aiBot.cloneState(), 'RED');
-                this.showAIActionTree = true;
-            });
-            btnAiTree.addEventListener('touchend', (e) => { e.preventDefault(); this.showAIActionTree = false; });
         }
 
-        const btnAiHeatmap = document.getElementById('btn-ai-heatmap');
-        if (btnAiHeatmap) {
-            btnAiHeatmap.addEventListener('mousedown', () => {
-                if (this.game.aiBot) this.game.aiHeatmapCache = this.game.aiBot.generateHeatmap(this.game.aiBot.cloneState(), 'RED');
-                this.showAIHeatmap = true;
+        const btnAiTreeRed = document.getElementById('btn-red-action-tree');
+        if (btnAiTreeRed) {
+            btnAiTreeRed.addEventListener('click', () => {
+                this.toggleAIHeatmap('RED');
             });
-            btnAiHeatmap.addEventListener('mouseup', () => { this.showAIHeatmap = false; });
-            btnAiHeatmap.addEventListener('mouseleave', () => { this.showAIHeatmap = false; });
-            btnAiHeatmap.addEventListener('touchstart', (e) => {
-                e.preventDefault();
-                if (this.game.aiBot) this.game.aiHeatmapCache = this.game.aiBot.generateHeatmap(this.game.aiBot.cloneState(), 'RED');
-                this.showAIHeatmap = true;
-            });
-            btnAiHeatmap.addEventListener('touchend', (e) => { e.preventDefault(); this.showAIHeatmap = false; });
         }
+
+        const btnBlueAiPrev = document.getElementById('btn-blue-ai-prev');
+        const btnBlueAiNext = document.getElementById('btn-blue-ai-next');
+        if (btnBlueAiPrev) btnBlueAiPrev.addEventListener('click', () => this.stepAITurn('BLUE', -1));
+        if (btnBlueAiNext) btnBlueAiNext.addEventListener('click', () => this.stepAITurn('BLUE', 1));
+
+        const btnRedAiPrev = document.getElementById('btn-red-ai-prev');
+        const btnRedAiNext = document.getElementById('btn-red-ai-next');
+        if (btnRedAiPrev) btnRedAiPrev.addEventListener('click', () => this.stepAITurn('RED', -1));
+        if (btnRedAiNext) btnRedAiNext.addEventListener('click', () => this.stepAITurn('RED', 1));
+
+        this.initTeachAI();
 
         // History Controls
         document.getElementById('btn-hist-prev').addEventListener('click', () => {
@@ -191,7 +196,7 @@ export class UIManager {
                 const unit = this.game.getTile(col, row).unit;
                 if (!unit) return;
 
-                const length = Math.floor((unit.strength + 1) / 2) + 1;
+                const length = Math.max(1, unit.strength || 1);
                 if (this.barricadeOffset === undefined) {
                     this.barricadeOffset = Math.floor(length / 2);
                 }
@@ -231,13 +236,15 @@ export class UIManager {
                 perspective = this.game.localTeam;
             }
 
-            // Absolutely hide completely if blocked by barricade line-of-sight
-            if (tile.unit.team !== perspective && tile.unit.type !== 'observation' && !this.game.canSeeUnit(col, row, perspective)) {
+            const isAIHeatmapDebug = this.showAIHeatmap;
+
+            // Absolutely hide completely if blocked by barricade line-of-sight (bypassed in AI heatmap debug mode)
+            if (!isAIHeatmapDebug && tile.unit.team !== perspective && tile.unit.type !== 'observation' && !this.game.canSeeUnit(col, row, perspective)) {
                 if (this.unitTooltip) this.unitTooltip.classList.add('hidden');
                 return;
             }
 
-            let hideStats = this.game.getFogOfWar(col, row, perspective);
+            let hideStats = isAIHeatmapDebug ? false : this.game.getFogOfWar(col, row, perspective);
 
             if (tile.unit.exposedCounter && tile.unit.exposedCounter > 0) {
                 hideStats = false;
@@ -452,6 +459,21 @@ export class UIManager {
             skipBtn.classList.add('btn-red');
         }
 
+        // When playing against a bot, the bot player should not have a "skip Action" button
+        const isCurrentPlayerBot = (this.game.gameMode === 'AI' && this.game.activeTeam !== this.game.localTeam);
+        skipBtn.style.display = isCurrentPlayerBot ? 'none' : 'block';
+
+        // When playing vs computer, remove the two hexagon (red/blue) buttons on the bot AI's player panel
+        const isRedBot = (this.game.gameMode === 'AI' && (this.game.localTeam === 'BLUE' || !this.game.localTeam));
+        const redHexToggleGroup = document.getElementById('red-hex-toggle-group');
+        if (redHexToggleGroup) {
+            redHexToggleGroup.style.display = isRedBot ? 'none' : 'flex';
+        }
+        const blueHexToggleGroup = document.getElementById('blue-hex-toggle-group');
+        if (blueHexToggleGroup) {
+            blueHexToggleGroup.style.display = 'flex';
+        }
+
         if (this.game.winner && !this.historyHasWon) {
             this.historyHasWon = true;
             this.timeMachineOpen = true;
@@ -462,6 +484,20 @@ export class UIManager {
         if (hist && clock) {
             hist.style.display = this.timeMachineOpen ? 'flex' : 'none';
         }
+
+        // Show robot button ONLY for computer player, hide under human player
+        const isBlueAI = (this.game.gameMode === 'AI' && this.game.localTeam === 'RED') || (this.game.aiBot && this.game.aiTeam === 'BLUE');
+        const isRedAI = (this.game.gameMode === 'AI' && (this.game.localTeam === 'BLUE' || !this.game.localTeam)) || (this.game.aiBot && this.game.aiTeam === 'RED');
+
+        const blueAiContainer = document.getElementById('blue-ai-container');
+        const redAiContainer = document.getElementById('red-ai-container');
+        if (blueAiContainer) blueAiContainer.style.display = isBlueAI ? 'flex' : 'none';
+        if (redAiContainer) redAiContainer.style.display = isRedAI ? 'flex' : 'none';
+
+        if (this.showAIHeatmap) {
+            this.updateAIHeatmapForCurrentSnapshot();
+        }
+        this.updateAIHeatmapUI();
     }
 
     refreshLog() {
@@ -562,6 +598,13 @@ export class UIManager {
 
     handleHexClick(col, row, key, e) {
         if (this.game.winner) return;
+
+        // Teach AI: intercept tile click to insert tile coordinates and score
+        if (this.teachAIPanelOpen && this.isAwaitingTileMention()) {
+            this.insertTileMention(col, row);
+            return;
+        }
+
         if (this.game.historyIndex !== this.game.history.length - 1) {
             this.game.logSystem("Viewing history. Return to Live state to take actions.");
             return;
@@ -730,7 +773,7 @@ export class UIManager {
             if (barricadeCheck.valid) {
                 this.currentAction = 'WAITING_BARRICADE'; // Must define state immediately so scroll captures it!
                 this.game.selectedTile = key;
-                const length = Math.floor((tile.unit.strength + 1) / 2) + 1;
+                const length = Math.max(1, tile.unit.strength || 1);
                 this.barricadeOffset = Math.floor(length / 2); // initialize offset
 
                 this.render.hoverHexes = null;
@@ -840,5 +883,520 @@ export class UIManager {
             this.timeMachineOpen = true;
             this.updateHUD();
         };
+    }
+
+    toggleAIHeatmap(team) {
+        if (this.render && typeof this.render.clearMoveAnimations === 'function') {
+            this.render.clearMoveAnimations();
+        }
+        if (this.showAIHeatmap && this.aiHeatmapTeam === team) {
+            // Turn off
+            this.showAIHeatmap = false;
+            this.aiHeatmapTeam = null;
+            // Restore to live snapshot if we were reviewing past turns
+            if (this.game.historyIndex !== this.game.history.length - 1) {
+                this.game.loadSnapshot(this.game.history.length - 1);
+                this.resetActiveState();
+                this.game.logSystem("Returned to LIVE state.");
+            }
+        } else {
+            // Turn on (or switch team)
+            this.showAIHeatmap = true;
+            this.aiHeatmapTeam = team;
+            this.updateAIHeatmapForCurrentSnapshot();
+        }
+        this.updateAIHeatmapUI();
+        if (this.render) this.render.draw();
+    }
+
+    updateAIHeatmapForCurrentSnapshot() {
+        if (!this.showAIHeatmap || !this.game.aiBot) return;
+        const team = this.aiHeatmapTeam || 'RED';
+        this.game.aiHeatmapCache = this.game.aiBot.generateHeatmap(this.game.aiBot.cloneState(), team);
+    }
+
+    getAISnapshotIndices(team) {
+        const indices = [];
+        for (let i = 0; i < this.game.history.length; i++) {
+            const snap = this.game.history[i];
+            if (snap.activeTeam === team) {
+                indices.push(i);
+            }
+        }
+        return indices;
+    }
+
+    stepAITurn(team, direction) {
+        const aiIndices = this.getAISnapshotIndices(team);
+        if (aiIndices.length === 0) return;
+
+        const currentIdx = this.game.historyIndex;
+        let targetIdx = -1;
+
+        if (direction < 0) {
+            // Step backwards to previous AI turn
+            for (let i = aiIndices.length - 1; i >= 0; i--) {
+                if (aiIndices[i] < currentIdx) {
+                    targetIdx = aiIndices[i];
+                    break;
+                }
+            }
+        } else {
+            // Step forward to next AI turn
+            for (let i = 0; i < aiIndices.length; i++) {
+                if (aiIndices[i] > currentIdx) {
+                    targetIdx = aiIndices[i];
+                    break;
+                }
+            }
+            // Allow stepping up to live state if no further AI turn snapshot
+            if (targetIdx === -1 && currentIdx < this.game.history.length - 1) {
+                targetIdx = this.game.history.length - 1;
+            }
+        }
+
+        if (targetIdx !== -1 && targetIdx !== currentIdx) {
+            this.game.loadSnapshot(targetIdx);
+            this.updateHUD();
+            this.resetActiveState();
+            this.updateAIHeatmapForCurrentSnapshot();
+            this.updateAIHeatmapUI();
+            if (this.render) this.render.draw();
+        }
+    }
+
+    updateAIHeatmapUI() {
+        ['BLUE', 'RED'].forEach(team => {
+            const lower = team.toLowerCase();
+            const btnTree = document.getElementById(`btn-${lower}-action-tree`);
+            const btnPrev = document.getElementById(`btn-${lower}-ai-prev`);
+            const btnNext = document.getElementById(`btn-${lower}-ai-next`);
+            const label = document.getElementById(`${lower}-ai-turn-label`);
+
+            const isActive = this.showAIHeatmap && this.aiHeatmapTeam === team;
+            if (btnTree) {
+                if (isActive) {
+                    btnTree.style.background = team === 'BLUE' ? 'rgba(59, 130, 246, 0.45)' : 'rgba(239, 68, 68, 0.45)';
+                    btnTree.style.borderColor = team === 'BLUE' ? '#3b82f6' : '#ef4444';
+                    btnTree.style.boxShadow = team === 'BLUE' ? '0 0 16px rgba(59, 130, 246, 0.7)' : '0 0 16px rgba(239, 68, 68, 0.7)';
+                } else {
+                    btnTree.style.background = team === 'BLUE' ? 'rgba(59, 130, 246, 0.2)' : 'rgba(239, 68, 68, 0.2)';
+                    btnTree.style.borderColor = team === 'BLUE' ? '#60a5fa' : '#f87171';
+                    btnTree.style.boxShadow = 'none';
+                }
+            }
+
+            if (isActive) {
+                if (btnPrev) btnPrev.style.display = 'flex';
+                if (btnNext) btnNext.style.display = 'flex';
+                if (label) label.style.display = 'block';
+
+                const aiIndices = this.getAISnapshotIndices(team);
+                const currentIdx = this.game.historyIndex;
+                const isLive = (currentIdx === this.game.history.length - 1);
+
+                // Find which AI turn index this is
+                let turnNum = -1;
+                for (let i = 0; i < aiIndices.length; i++) {
+                    if (aiIndices[i] === currentIdx) {
+                        turnNum = i + 1;
+                        break;
+                    }
+                }
+
+                if (label) {
+                    if (turnNum !== -1) {
+                        label.innerText = `Turn ${turnNum}${isLive ? ' (Live)' : ''}`;
+                    } else if (isLive) {
+                        label.innerText = 'Live State';
+                    } else {
+                        label.innerText = 'Turn Review';
+                    }
+                }
+
+                const hasPrev = aiIndices.some(idx => idx < currentIdx);
+                const hasNext = aiIndices.some(idx => idx > currentIdx) || (currentIdx < this.game.history.length - 1);
+
+                if (btnPrev) {
+                    btnPrev.style.opacity = hasPrev ? '1' : '0.35';
+                    btnPrev.style.pointerEvents = hasPrev ? 'auto' : 'none';
+                }
+                if (btnNext) {
+                    btnNext.style.opacity = hasNext ? '1' : '0.35';
+                    btnNext.style.pointerEvents = hasNext ? 'auto' : 'none';
+                }
+            } else {
+                if (btnPrev) btnPrev.style.display = 'none';
+                if (btnNext) btnNext.style.display = 'none';
+                if (label) label.style.display = 'none';
+            }
+
+            // Teach AI Debug Button visibility
+            const btnTeach = document.getElementById(`btn-${lower}-teach-ai`);
+            const boxThinking = document.getElementById(`${lower}-ai-thinking-box`);
+            const isThinking = boxThinking && boxThinking.style.display !== 'none';
+            if (btnTeach) {
+                if (isActive && !isThinking) {
+                    btnTeach.style.display = 'flex';
+                } else {
+                    btnTeach.style.display = 'none';
+                    if (!this.showAIHeatmap && this.teachAIPanelOpen) {
+                        this.toggleTeachAIPanel(team);
+                    }
+                }
+            }
+        });
+    }
+
+    showAIThinking(team, visible) {
+        const prefix = team.toLowerCase();
+        const box = document.getElementById(`${prefix}-ai-thinking-box`);
+        const btnTeach = document.getElementById(`btn-${prefix}-teach-ai`);
+        if (box) {
+            box.style.display = visible ? 'flex' : 'none';
+        }
+        if (btnTeach && visible) {
+            btnTeach.style.display = 'none';
+        }
+        if (!visible) {
+            this.updateAIThinkingProgress(team, 0);
+            this.updateAIHeatmapUI();
+        }
+    }
+
+    updateAIThinkingProgress(team, percent) {
+        const prefix = team.toLowerCase();
+        const bar = document.getElementById(`${prefix}-ai-progress-bar`);
+        const txt = document.getElementById(`${prefix}-ai-progress-text`);
+        const clamped = Math.max(0, Math.min(100, Math.round(percent)));
+        if (bar) {
+            bar.style.width = `${clamped}%`;
+        }
+        if (txt) {
+            txt.textContent = `${clamped}%`;
+        }
+    }
+
+    initTeachAI() {
+        this.teachAIPanel = document.getElementById('teach-ai-panel');
+        this.teachAITextarea = document.getElementById('teach-ai-feedback-text');
+        this.teachAIPanelOpen = false;
+        this.awaitingTileMention = false;
+        this.currentTeachReport = '';
+
+        // Wire debug buttons
+        const btnTeachRed = document.getElementById('btn-red-teach-ai');
+        if (btnTeachRed) {
+            btnTeachRed.addEventListener('click', () => this.toggleTeachAIPanel('RED'));
+        }
+        const btnTeachBlue = document.getElementById('btn-blue-teach-ai');
+        if (btnTeachBlue) {
+            btnTeachBlue.addEventListener('click', () => this.toggleTeachAIPanel('BLUE'));
+        }
+
+        // Close button
+        const btnClose = document.getElementById('btn-close-teach-ai');
+        if (btnClose) {
+            btnClose.addEventListener('click', () => this.toggleTeachAIPanel(this.aiHeatmapTeam || 'RED'));
+        }
+
+        // Textarea input detection for '@'
+        if (this.teachAITextarea) {
+            this.teachAITextarea.addEventListener('input', (e) => {
+                const val = this.teachAITextarea.value;
+                const pos = this.teachAITextarea.selectionStart;
+                if (pos > 0 && val[pos - 1] === '@') {
+                    this.setAwaitingTileMention(true);
+                } else if (!val.includes('@')) {
+                    this.setAwaitingTileMention(false);
+                }
+            });
+        }
+
+        // Pick Tile Button
+        const btnPick = document.getElementById('btn-teach-ai-pick-tile');
+        if (btnPick) {
+            btnPick.addEventListener('click', () => {
+                if (!this.teachAITextarea) return;
+                const val = this.teachAITextarea.value;
+                const pos = this.teachAITextarea.selectionStart !== undefined ? this.teachAITextarea.selectionStart : val.length;
+                if (pos === 0 || val[pos - 1] !== '@') {
+                    this.teachAITextarea.value = val.slice(0, pos) + '@' + val.slice(pos);
+                    this.teachAITextarea.setSelectionRange(pos + 1, pos + 1);
+                }
+                this.setAwaitingTileMention(true);
+            });
+        }
+
+        // Clear Button
+        const btnClear = document.getElementById('btn-teach-ai-clear');
+        if (btnClear) {
+            btnClear.addEventListener('click', () => {
+                if (this.teachAITextarea) this.teachAITextarea.value = '';
+                this.setAwaitingTileMention(false);
+            });
+        }
+
+        // Submit Report Button
+        const btnSubmit = document.getElementById('btn-teach-ai-submit');
+        if (btnSubmit) {
+            btnSubmit.addEventListener('click', () => this.submitTeachAIReport());
+        }
+
+        // Edit Feedback Button
+        const btnEdit = document.getElementById('btn-teach-ai-edit');
+        if (btnEdit) {
+            btnEdit.addEventListener('click', () => {
+                document.getElementById('teach-ai-input-view')?.classList.remove('hidden');
+                document.getElementById('teach-ai-report-view')?.classList.add('hidden');
+                if (this.teachAITextarea) this.teachAITextarea.focus();
+            });
+        }
+
+        // Copy Report Button
+        const btnCopy = document.getElementById('btn-teach-ai-copy');
+        if (btnCopy) {
+            btnCopy.addEventListener('click', () => this.copyTeachAIReport());
+        }
+    }
+
+    toggleTeachAIPanel(team) {
+        const panel = document.getElementById('teach-ai-panel');
+        if (!panel) return;
+        this.teachAIPanelOpen = !this.teachAIPanelOpen;
+        if (this.teachAIPanelOpen) {
+            const frameId = team === 'BLUE' ? 'left-frame' : 'right-frame';
+            const frame = document.getElementById(frameId);
+            if (frame && panel.parentElement !== frame) {
+                frame.appendChild(panel);
+            }
+            panel.classList.remove('hidden');
+            document.getElementById('teach-ai-input-view')?.classList.remove('hidden');
+            document.getElementById('teach-ai-report-view')?.classList.add('hidden');
+            this.setAwaitingTileMention(false);
+            if (this.teachAITextarea) this.teachAITextarea.focus();
+        } else {
+            panel.classList.add('hidden');
+            this.setAwaitingTileMention(false);
+        }
+    }
+
+    setAwaitingTileMention(active) {
+        this.awaitingTileMention = active;
+        const hint = document.getElementById('teach-ai-tile-hint');
+        const activeBadge = document.getElementById('teach-ai-tile-active');
+        if (hint && activeBadge) {
+            if (active) {
+                hint.classList.add('hidden');
+                activeBadge.classList.remove('hidden');
+            } else {
+                hint.classList.remove('hidden');
+                activeBadge.classList.add('hidden');
+            }
+        }
+    }
+
+    isAwaitingTileMention() {
+        if (this.awaitingTileMention) return true;
+        if (!this.teachAITextarea) return false;
+        const val = this.teachAITextarea.value;
+        const selStart = this.teachAITextarea.selectionStart !== undefined ? this.teachAITextarea.selectionStart : val.length;
+        if (selStart > 0 && val[selStart - 1] === '@') return true;
+        return false;
+    }
+
+    insertTileMention(col, row) {
+        if (!this.teachAITextarea) return;
+        let scoreTxt = '0';
+        let isBarricade = false;
+        const tile = this.game.getTile(col, row);
+        if (tile && tile.isBarricade) isBarricade = true;
+
+        if (this.game.aiHeatmapCache) {
+            const ev = this.game.aiHeatmapCache.find(e => e.col === col && e.row === row);
+            if (ev) {
+                if (ev.isBarricade || ev.val === null) {
+                    isBarricade = true;
+                } else {
+                    const rounded = Math.round(ev.val);
+                    scoreTxt = (rounded > 0 ? '+' : '') + rounded.toLocaleString();
+                }
+            }
+        }
+        const mention = isBarricade
+            ? `@Tile(${col}, ${row}) [Barricade] `
+            : `@Tile(${col}, ${row}) [Score: ${scoreTxt}] `;
+        const textarea = this.teachAITextarea;
+        const val = textarea.value;
+        const selStart = textarea.selectionStart !== undefined ? textarea.selectionStart : val.length;
+        const atIdx = val.lastIndexOf('@', selStart > 0 ? selStart - 1 : 0);
+
+        if (atIdx !== -1 && (selStart - atIdx) <= 5) {
+            textarea.value = val.slice(0, atIdx) + mention + val.slice(selStart);
+            const nextPos = atIdx + mention.length;
+            textarea.setSelectionRange(nextPos, nextPos);
+        } else {
+            textarea.value = val.slice(0, selStart) + mention + val.slice(selStart);
+            const nextPos = selStart + mention.length;
+            textarea.setSelectionRange(nextPos, nextPos);
+        }
+
+        this.setAwaitingTileMention(false);
+        textarea.focus();
+    }
+
+    formatBoardStateText(snap, label) {
+        if (!snap) return `#### ${label}\n*No snapshot data available.*`;
+        const cols = this.game.cols;
+        const rows = this.game.rows;
+        let lines = [];
+        lines.push(`#### ${label}`);
+        lines.push(`- **Active Turn**: ${snap.activeTeam || 'N/A'}`);
+        lines.push(`- **Credits**: Blue = ${snap.credits?.BLUE ?? 0}, Red = ${snap.credits?.RED ?? 0}`);
+        if (snap.lastMove) {
+            const lm = snap.lastMove;
+            const u = lm.unit || {};
+            lines.push(`- **Last Move**: (${lm.sC}, ${lm.sR}) -> (${lm.eC}, ${lm.eR}) [Unit: ${u.team || 'N/A'} ${u.type || 'combat'}, Str ${u.strength ?? '?'}, Spd ${u.speed ?? '?'}]`);
+        }
+
+        const units = [];
+        const barricades = [];
+        for (let [k, tile] of snap.board.entries()) {
+            const [c, r] = k.split(',').map(Number);
+            if (tile.unit) {
+                const u = tile.unit;
+                units.push(`  - [${u.team}] ${u.isFlag ? 'FLAG' : (u.type || 'combat').toUpperCase()} (Str: ${u.strength}, Spd: ${u.speed}) at (${c}, ${r})`);
+            }
+            if (tile.isBarricade) {
+                barricades.push(`(${c}, ${r})`);
+            }
+        }
+
+        lines.push(`- **Units on Board** (${units.length}):`);
+        if (units.length > 0) lines.push(units.join('\n'));
+        else lines.push('  - None');
+
+        lines.push(`- **Barricades** (${barricades.length}): ${barricades.length > 0 ? barricades.join(', ') : 'None'}`);
+
+        lines.push(`\n**Grid Representation (${cols}x${rows}):**`);
+        lines.push('```text');
+        let colHdr = '     ';
+        for (let c = 0; c < cols; c++) {
+            colHdr += (c < 10 ? ' ' + c : c) + ' ';
+        }
+        lines.push(colHdr);
+
+        for (let r = 0; r < rows; r++) {
+            let rowStr = (r < 10 ? ' ' + r : r) + ':  ';
+            for (let c = 0; c < cols; c++) {
+                const tile = snap.board.get(`${c},${r}`);
+                if (!tile) {
+                    rowStr += ' . ';
+                } else if (tile.isBarricade) {
+                    rowStr += '###';
+                } else if (tile.unit) {
+                    const u = tile.unit;
+                    const t = u.team === 'BLUE' ? 'B' : 'R';
+                    if (u.isFlag) rowStr += `${t}F `;
+                    else if (u.strength !== undefined) rowStr += `${t}${u.strength} `;
+                    else rowStr += `${t}* `;
+                } else {
+                    rowStr += ' . ';
+                }
+            }
+            lines.push(rowStr);
+        }
+        lines.push('```');
+        return lines.join('\n');
+    }
+
+    generateTeachAIReport() {
+        const feedback = (this.teachAITextarea?.value || '').trim();
+        const currentIdx = this.game.historyIndex;
+        const totalSnaps = this.game.history.length;
+
+        let prevSnap = null;
+        let postSnap = null;
+
+        if (currentIdx < totalSnaps - 1) {
+            postSnap = this.game.history[currentIdx];
+            prevSnap = currentIdx > 0 ? this.game.history[currentIdx - 1] : postSnap;
+        } else {
+            postSnap = this.game.history[totalSnaps - 1];
+            prevSnap = totalSnaps >= 2 ? this.game.history[totalSnaps - 2] : postSnap;
+        }
+
+        const botTeam = this.aiHeatmapTeam || (this.game.aiBot ? (this.game.aiBot.team || 'RED') : 'RED');
+
+        let report = [];
+        report.push('# Teach AI: Bot Feedback Report\n');
+        report.push('## 1. User Feedback');
+        report.push(feedback.length > 0 ? feedback : '*No text feedback entered.*');
+        report.push('\n---\n');
+        report.push('## 2. Previous Board State (Before Bot Move)');
+        report.push(this.formatBoardStateText(prevSnap, 'Board Before Bot Move'));
+        report.push('\n---\n');
+        report.push('## 3. Current Board State (After Bot Move)');
+        report.push(this.formatBoardStateText(postSnap, 'Board After Bot Move'));
+        report.push('\n---\n');
+        report.push('## 4. Metadata');
+        report.push(`- **Bot Team**: ${botTeam}`);
+        report.push(`- **Game Mode**: ${this.game.config?.mode || 'STANDARD'} (${this.game.config?.type || 'INVADE'})`);
+        report.push(`- **Grid Size**: ${this.game.cols} cols x ${this.game.rows} rows`);
+        report.push(`- **History Snapshot**: ${currentIdx + 1} of ${totalSnaps}`);
+
+        return report.join('\n');
+    }
+
+    submitTeachAIReport() {
+        this.currentTeachReport = this.generateTeachAIReport();
+        const pre = document.getElementById('teach-ai-report-pre');
+        if (pre) pre.textContent = this.currentTeachReport;
+
+        document.getElementById('teach-ai-input-view')?.classList.add('hidden');
+        document.getElementById('teach-ai-report-view')?.classList.remove('hidden');
+    }
+
+    copyTeachAIReport() {
+        if (!this.currentTeachReport) return;
+        const btn = document.getElementById('btn-teach-ai-copy');
+        const txt = document.getElementById('teach-ai-copy-text');
+
+        const onSuccess = () => {
+            if (btn && txt) {
+                btn.classList.add('copied');
+                txt.textContent = 'Copied to Clipboard!';
+                setTimeout(() => {
+                    btn.classList.remove('copied');
+                    txt.textContent = 'Copy Report';
+                }, 2000);
+            }
+        };
+
+        const nav = (typeof window !== 'undefined' && window.navigator) ? window.navigator : (typeof navigator !== 'undefined' ? navigator : null);
+        if (nav && nav.clipboard && nav.clipboard.writeText) {
+            nav.clipboard.writeText(this.currentTeachReport).then(onSuccess).catch(err => {
+                this.fallbackCopyText(this.currentTeachReport, onSuccess);
+            });
+        } else {
+            this.fallbackCopyText(this.currentTeachReport, onSuccess);
+        }
+    }
+
+    fallbackCopyText(text, cb) {
+        const pre = document.getElementById('teach-ai-report-pre');
+        if (pre) {
+            const range = document.createRange();
+            range.selectNodeContents(pre);
+            const sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+        }
+        try {
+            document.execCommand('copy');
+            if (cb) cb();
+        } catch (e) {
+            console.warn('execCommand copy failed:', e);
+        }
     }
 }

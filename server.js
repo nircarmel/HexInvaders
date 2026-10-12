@@ -93,7 +93,13 @@ const server = http.createServer((request, response) => {
                 response.end('Server Error: ' + error.code + '\n');
             }
         } else {
-            response.writeHead(200, { 'Content-Type': contentType });
+            response.writeHead(200, {
+                'Content-Type': contentType,
+                'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+                'Pragma': 'no-cache',
+                'Expires': '0',
+                'Surrogate-Control': 'no-store'
+            });
             response.end(content, 'utf-8');
         }
     });
