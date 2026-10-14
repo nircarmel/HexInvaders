@@ -457,7 +457,8 @@ export class AIBotV3 {
                 r.power -= 1;
             } else {
                 if (!tileIsOccupied) {
-                    return 'NEUTRAL';
+                    blueUnits.shift();
+                    redUnits.shift();
                 } else {
                     if (occupantPlayer === 'BLUE') {
                         blueUnits.shift();
@@ -466,7 +467,8 @@ export class AIBotV3 {
                         redUnits.shift();
                         b.power -= 1;
                     } else {
-                        return 'NEUTRAL';
+                        blueUnits.shift();
+                        redUnits.shift();
                     }
                 }
             }
@@ -548,37 +550,50 @@ export class AIBotV3 {
                     // Fall through to regular tile scoring below, where it gets evaluated naturally.
                 }
 
-                let tileOwner = 'NEUTRAL';
-                let maxMy = 0;
-                let maxEnemy = 0;
+                let myReach = occupants.filter(u => u.player === botPlayer && !u.isFlag && u.type !== 'observation');
+                let enemyReach = occupants.filter(u => u.player === opponent && !u.isFlag && u.type !== 'observation');
 
+                let maxMy = myReach.length > 0 ? Math.max(...myReach.map(u => u.power)) : 0;
+                let maxEnemy = enemyReach.length > 0 ? Math.max(...enemyReach.map(u => u.power)) : 0;
+
+                let tileOwner = 'NEUTRAL';
                 if (actualOccupant) {
                     if (actualOccupant.player === botPlayer) {
                         let enemyAttackers = occupants.filter(u => u.player === opponent && !u.isFlag && u.type !== 'observation');
                         let threatened = enemyAttackers.some(e => e.power >= actualOccupant.power);
-                        tileOwner = threatened ? opponent : botPlayer;
+                        if (threatened && myReach.length > 1) {
+                            let duelRes = this.resolveDuel(occupants, true, botPlayer);
+                            tileOwner = duelRes === botPlayer ? botPlayer : opponent;
+                        } else {
+                            tileOwner = threatened ? opponent : botPlayer;
+                        }
                     } else {
                         let friendlyAttackers = occupants.filter(u => u.player === botPlayer && !u.isFlag && u.type !== 'observation');
                         let conquerable = friendlyAttackers.some(f => f.power >= actualOccupant.power);
-                        tileOwner = conquerable ? botPlayer : opponent;
+                        if (conquerable && enemyReach.length > 1) {
+                            let duelRes = this.resolveDuel(occupants, true, opponent);
+                            tileOwner = duelRes === botPlayer ? botPlayer : opponent;
+                        } else {
+                            tileOwner = conquerable ? botPlayer : opponent;
+                        }
                     }
                 } else {
-                    let myReach = occupants.filter(u => u.player === botPlayer && !u.isFlag && u.type !== 'observation');
-                    let enemyReach = occupants.filter(u => u.player === opponent && !u.isFlag && u.type !== 'observation');
-
-                    maxMy = myReach.length > 0 ? Math.max(...myReach.map(u => u.power)) : 0;
-                    maxEnemy = enemyReach.length > 0 ? Math.max(...enemyReach.map(u => u.power)) : 0;
-
                     if (maxMy > 0 && maxEnemy > 0) {
-                        // Contested zone: stepping here makes you the defender on opponent's turn.
-                        // Safe to control ONLY if friendly power strictly exceeds enemy power.
-                        tileOwner = maxMy > maxEnemy ? botPlayer : opponent;
+                        // Contested zone: multiple units from both sides!
+                        let duelWinner = this.resolveDuel(occupants, false, null);
+                        if (duelWinner === botPlayer) {
+                            tileOwner = botPlayer;
+                        } else if (duelWinner === opponent) {
+                            tileOwner = opponent;
+                        } else {
+                            // Deadlock / mutual trade: on opponent's turn, stepping here makes friendly the defender
+                            tileOwner = maxMy > maxEnemy ? botPlayer : opponent;
+                        }
                     } else if (maxMy > 0) {
                         tileOwner = botPlayer;
                     } else if (maxEnemy > 0) {
                         tileOwner = opponent;
                     } else {
-                        // Unthreatened empty tile (neither player can reach)
                         tileOwner = 'UNTHREATENED';
                     }
                 }
@@ -598,11 +613,17 @@ export class AIBotV3 {
                         // Empty tile
                         let advanceBonus = this.getAdvanceBonus(col, botPlayer, state.cols);
                         if (maxMy > 0 && maxEnemy > 0) {
-                            // Contested tile
+                            // Contested tile: reward control plus combat margin
                             if (tileOwner === botPlayer) {
-                                tileScore += (maxMy * genes.COMBAT_BOOST) + advanceBonus;
+                                let myTotal = myReach.reduce((s, u) => s + u.power, 0);
+                                let enemyTotal = enemyReach.reduce((s, u) => s + u.power, 0);
+                                let margin = Math.max(1, myTotal - enemyTotal);
+                                tileScore += (margin * genes.COMBAT_BOOST) + advanceBonus;
                             } else {
-                                tileScore -= (maxEnemy * genes.COMBAT_BOOST) + this.getAdvanceBonus(col, opponent, state.cols);
+                                let enemyTotal = enemyReach.reduce((s, u) => s + u.power, 0);
+                                let myTotal = myReach.reduce((s, u) => s + u.power, 0);
+                                let margin = Math.max(1, enemyTotal - myTotal);
+                                tileScore -= (margin * genes.COMBAT_BOOST) + this.getAdvanceBonus(col, opponent, state.cols);
                             }
                         } else if (maxEnemy > 0) {
                             // Enemy uncontested reach
@@ -625,34 +646,50 @@ export class AIBotV3 {
                         }
                     }
                 } else if (state.gameMode === 'PLANT') {
-                    let base_value = 0;
-
-                    let totalBlueCombatRaw = 0;
-                    let totalRedCombatRaw = 0;
-
-                    for (let cUnit of occupants) {
-                        if (cUnit.type === 'observation' || cUnit.isFlag) continue;
-                        let advanceBonus = this.getAdvanceBonus(col, cUnit.player, state.cols);
-                        let rv = (cUnit.power * cUnit.speed * genes.COMBAT_BOOST) + advanceBonus;
-                        if (cUnit.player === 'BLUE') totalBlueCombatRaw += rv;
-                        else totalRedCombatRaw += rv;
+                    if (actualOccupant) {
+                        if (actualOccupant.player === botPlayer) {
+                            let advanceBonus = this.getAdvanceBonus(col, botPlayer, state.cols);
+                            tileScore += (actualOccupant.power * (actualOccupant.speed || 1) * genes.COMBAT_BOOST) + (advanceBonus * 2);
+                        } else {
+                            let oppAdvance = this.getAdvanceBonus(col, opponent, state.cols);
+                            tileScore -= (actualOccupant.power * (actualOccupant.speed || 1) * genes.COMBAT_BOOST) + (oppAdvance * 2);
+                        }
+                    } else {
+                        // Empty tile in PLANT mode
+                        let advanceBonus = this.getAdvanceBonus(col, botPlayer, state.cols);
+                        if (maxMy > 0 && maxEnemy > 0) {
+                            // Contested tile in PLANT mode: multi-unit control & combat margin
+                            if (tileOwner === botPlayer) {
+                                let myTotal = myReach.reduce((s, u) => s + (u.power * (u.speed || 1)), 0);
+                                let enemyTotal = enemyReach.reduce((s, u) => s + (u.power * (u.speed || 1)), 0);
+                                let margin = Math.max(1, myTotal - enemyTotal);
+                                tileScore += (margin * genes.COMBAT_BOOST) + advanceBonus;
+                            } else {
+                                let enemyTotal = enemyReach.reduce((s, u) => s + (u.power * (u.speed || 1)), 0);
+                                let myTotal = myReach.reduce((s, u) => s + (u.power * (u.speed || 1)), 0);
+                                let margin = Math.max(1, enemyTotal - myTotal);
+                                tileScore -= (margin * genes.COMBAT_BOOST) + this.getAdvanceBonus(col, opponent, state.cols);
+                            }
+                        } else if (maxEnemy > 0) {
+                            let oppPwr = enemyReach.reduce((s, u) => Math.max(s, u.power * (u.speed || 1)), 0);
+                            tileScore -= (oppPwr * genes.COMBAT_BOOST) + this.getAdvanceBonus(col, opponent, state.cols);
+                        } else {
+                            // maxEnemy === 0: Unthreatened safe territory in PLANT mode.
+                            // Adding a 2nd unit does NOT double this score; it was controlled and still is!
+                            tileScore += advanceBonus;
+                        }
                     }
-                    if (tileOwner === 'BLUE') base_value += totalBlueCombatRaw;
-                    if (tileOwner === 'RED') base_value += totalRedCombatRaw;
-                    if (tileOwner === 'UNTHREATENED') base_value += this.getAdvanceBonus(col, botPlayer, state.cols);
 
                     for (let u of state.units) {
                         if (u.type === 'observation') {
                             let dist = hexMath.offsetDistance(u.col, u.row, col, row);
                             if (dist <= 6) {
                                 let ringNum = Math.floor(dist) + 1;
-                                base_value += (genes.OBS_BOOST / ringNum);
+                                let scoreVal = (genes.OBS_BOOST / ringNum);
+                                tileScore += (u.player === botPlayer ? scoreVal : -scoreVal);
                             }
                         }
                     }
-
-                    let sign = (tileOwner === botPlayer || tileOwner === 'UNTHREATENED') ? 1 : -1;
-                    tileScore += sign * base_value;
 
                     const flags = state.units.filter(u => u.isFlag);
                     for (let f of flags) {
@@ -683,7 +720,8 @@ export class AIBotV3 {
 
                             let multiplier = 1 + (genes.FLAG_BOOST * ringNum * direction);
                             if (f.player === tileOwner) {
-                                tileScore += sign * base_value * (multiplier - 1);
+                                let advanceBonus = this.getAdvanceBonus(col, botPlayer, state.cols);
+                                tileScore += fSign * advanceBonus * (multiplier - 1);
                             }
                         }
                     }

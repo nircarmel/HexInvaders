@@ -812,7 +812,7 @@ export class RenderEngine {
         // --- DRAW AI OVERLAY NUMBERS ---
         if (this.game.ui && this.game.ui.showAIActionTree && this.game.aiActionTreeCache) {
             let evals = this.game.aiActionTreeCache;
-            let maxVal = evals.length > 0 ? Math.max(...evals.map(e => e.val)) : 0;
+            let maxVal = evals.length > 0 ? Math.max(...evals.map(e => e.val)) : null;
 
             for (let ev of evals) {
                 let targetPt = hexMath.hexToPixel(ev.col, ev.row, this.hexRadius, this.ox, this.oy);
@@ -820,8 +820,8 @@ export class RenderEngine {
                 let scoreTxt = (roundedVal > 0 ? '+' : '') + roundedVal.toLocaleString();
 
                 let isMax = ev.val === maxVal;
-                this.ctx.font = 'bold ' + (isMax ? '13px' : '10px') + ' Inter, sans-serif';
-                this.ctx.fillStyle = isMax ? '#fbbf24' : '#fff';
+                this.ctx.font = (isMax ? 'bold 10px' : '10px') + ' Inter, sans-serif';
+                this.ctx.fillStyle = roundedVal > 0 ? '#86efac' : '#fca5a5';
                 this.ctx.shadowColor = 'black';
                 this.ctx.shadowBlur = 4;
                 this.ctx.textAlign = 'center';
@@ -830,8 +830,10 @@ export class RenderEngine {
             }
         } else if (this.game.ui && this.game.ui.showAIHeatmap && this.game.aiHeatmapCache) {
             let evals = this.game.aiHeatmapCache;
-            let validVals = evals.map(e => e.val).filter(v => v < 500000);
-            let maxVal = validVals.length > 0 ? Math.max(...validVals) : 0;
+            let reachableVals = evals
+                .filter(e => e.botReachable && !e.isBarricade && e.val !== null && e.val !== undefined && e.val < 500000)
+                .map(e => e.val);
+            let maxVal = reachableVals.length > 0 ? Math.max(...reachableVals) : null;
 
             for (let ev of evals) {
                 if (ev.isBarricade || ev.val === null || ev.val === undefined) continue;
@@ -846,9 +848,9 @@ export class RenderEngine {
                 let hasUnit = !!(tile && (tile.unit || tile.pendingDeathVisual));
                 let textY = hasUnit ? (targetPt.y - this.hexRadius * 0.6) : (targetPt.y + 4);
 
-                let isMax = ev.val === maxVal;
-                this.ctx.font = 'bold ' + (isMax ? '13px' : '10px') + ' Inter, sans-serif';
-                this.ctx.fillStyle = isMax ? '#fbbf24' : (roundedVal > 0 ? '#86efac' : '#fca5a5');
+                let isMax = (ev.botReachable && maxVal !== null && ev.val === maxVal);
+                this.ctx.font = (isMax ? 'bold 10px' : '10px') + ' Inter, sans-serif';
+                this.ctx.fillStyle = roundedVal > 0 ? '#86efac' : '#fca5a5';
                 this.ctx.shadowColor = 'black';
                 this.ctx.shadowBlur = 4;
                 this.ctx.textAlign = 'center';
