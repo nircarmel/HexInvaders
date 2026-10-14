@@ -1,7 +1,7 @@
-const http = require('http');
-const fs = require('fs');
-const path = require('path');
-const os = require('os');
+import http from 'http';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 const PORT = process.env.PORT || 8080;
 
