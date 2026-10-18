@@ -185,13 +185,15 @@ class HexGame {
         this.activeTeam = 'BLUE';
 
         // key format: "col,row" 
-        // value: { unit: Unit|null, isBarricade: boolean }
+        // value: { unit: Unit|null, isBarricade: boolean, isMine: boolean }
         this.board = new Map();
         for (let col = 0; col < this.cols; col++) {
             for (let row = 0; row < this.rows; row++) {
-                this.board.set(`${col},${row}`, { unit: null, isBarricade: false });
+                this.board.set(`${col},${row}`, { unit: null, isBarricade: false, barricadeTeam: null, barricadeId: null, isMine: false });
             }
         }
+
+        this.initMines();
 
         this.logs = [];
         this.selectedTile = null;
@@ -222,8 +224,354 @@ class HexGame {
         // Timers in network games will be started manually upon connection
     }
 
+    initMines() {
+        if (!this.config) return;
+        let minePositions = Array.isArray(this.config.minePositions) ? this.config.minePositions : null;
+
+        if (!minePositions) {
+            const numMines = (typeof this.config.numMines === 'number') ? Math.max(0, this.config.numMines) : 2;
+            minePositions = [];
+
+            if (numMines > 0) {
+                const minCol = Math.max(2, Math.floor(this.cols * 0.25));
+                const maxCol = Math.min(this.cols - 3, Math.ceil(this.cols * 0.75) - 1);
+                const minRow = this.rows > 4 ? 1 : 0;
+                const maxRow = this.rows > 4 ? this.rows - 2 : this.rows - 1;
+                const used = new Set();
+
+                const isFarEnough = (c, r, minDist) => {
+                    for (const pos of minePositions) {
+                        const [pc, pr] = pos.split(',').map(Number);
+                        if (hexMath.offsetDistance(c, r, pc, pr) < minDist) return false;
+                    }
+                    return true;
+                };
+
+                // If odd number of mines, place 1 near the center first
+                let remaining = numMines;
+                if (remaining % 2 === 1) {
+                    const midCol = Math.floor(this.cols / 2);
+                    const midRow = Math.floor(this.rows / 2);
+                    const key = `${midCol},${midRow}`;
+                    if (this.board.has(key)) {
+                        minePositions.push(key);
+                        used.add(key);
+                        remaining--;
+                    }
+                }
+
+                // Place symmetric pairs across the board center so both players have equal access
+                const candidates = [];
+                for (let c = minCol; c <= maxCol; c++) {
+                    for (let r = minRow; r <= maxRow; r++) {
+                        candidates.push({ c, r });
+                    }
+                }
+                // Fallback to all non-home-zone tiles if needed
+                if (candidates.length < remaining) {
+                    for (let c = 2; c <= this.cols - 3; c++) {
+                        for (let r = 0; r < this.rows; r++) {
+                            candidates.push({ c, r });
+                        }
+                    }
+                }
+
+                // Shuffle candidates
+                for (let i = candidates.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+                }
+
+                for (const minDist of [3, 2, 1]) {
+                    if (remaining <= 0) break;
+                    for (const cand of candidates) {
+                        if (remaining <= 0) break;
+                        const c1 = cand.c;
+                        const r1 = cand.r;
+                        const c2 = this.cols - 1 - c1;
+                        const r2 = this.rows - 1 - r1;
+                        const k1 = `${c1},${r1}`;
+                        const k2 = `${c2},${r2}`;
+
+                        if (remaining >= 2) {
+                            if (k1 === k2 || used.has(k1) || used.has(k2)) continue;
+                            if (hexMath.offsetDistance(c1, r1, c2, r2) < minDist) continue;
+                            if (!isFarEnough(c1, r1, minDist) || !isFarEnough(c2, r2, minDist)) continue;
+                            minePositions.push(k1, k2);
+                            used.add(k1);
+                            used.add(k2);
+                            remaining -= 2;
+                        } else if (remaining === 1) {
+                            if (used.has(k1) || !isFarEnough(c1, r1, minDist)) continue;
+                            minePositions.push(k1);
+                            used.add(k1);
+                            remaining -= 1;
+                        }
+                    }
+                }
+            }
+
+            this.config.minePositions = minePositions;
+        }
+
+        for (const k of minePositions) {
+            const t = this.board.get(k);
+            if (t) t.isMine = true;
+        }
+    }
+
     get isGameOver() {
         return this.gameFinished === true || (this.history.length > 0 && this.history[this.history.length - 1].winner !== null);
+    }
+
+    get liveActiveTeam() {
+        if (this.history.length > 0) {
+            return this.history[this.history.length - 1].activeTeam;
+        }
+        return this.activeTeam;
+    }
+
+    ensureLiveState() {
+        const wasInHistory = this.historyIndex !== this.history.length - 1;
+        if (wasInHistory && this.history.length > 0) {
+            this.loadSnapshot(this.history.length - 1);
+        }
+        if (this.ui) {
+            if (this.ui.timeMachineOpen) {
+                this.ui.timeMachineOpen = false;
+            }
+            if (this.ui.showAIHeatmap) {
+                this.ui.showAIHeatmap = false;
+                this.ui.aiHeatmapTeam = null;
+            }
+            this.ui.resetActiveState();
+        }
+        return wasInHistory;
+    }
+
+    serializeSnapshot(index = this.history.length - 1) {
+        const snap = this.history[index];
+        if (!snap) return null;
+        const tiles = [];
+        for (let [k, v] of snap.board.entries()) {
+            if (v.unit || v.isBarricade || v.isMine) {
+                let uCopy = v.unit ? { ...v.unit } : null;
+                if (uCopy) delete uCopy.isAnimating;
+                tiles.push({
+                    k,
+                    unit: uCopy,
+                    isBarricade: !!v.isBarricade,
+                    barricadeTeam: v.barricadeTeam || null,
+                    barricadeId: v.barricadeId || null,
+                    isMine: !!v.isMine
+                });
+            }
+        }
+        return {
+            turnId: index,
+            tiles,
+            credits: { ...snap.credits },
+            activeTeam: snap.activeTeam,
+            winner: snap.winner || null,
+            actionUsed: !!snap.actionUsed,
+            deployCounts: { ...(snap.deployCounts || { 'BLUE': 0, 'RED': 0 }) },
+            hasFlag: { ...(snap.hasFlag || { 'BLUE': false, 'RED': false }) },
+            combats: snap.combats ? [...snap.combats] : [],
+            lastMove: snap.lastMove ? { ...snap.lastMove } : null
+        };
+    }
+
+    deserializeSnapshot(serialized) {
+        const board = new Map();
+        for (let col = 0; col < this.cols; col++) {
+            for (let row = 0; row < this.rows; row++) {
+                board.set(`${col},${row}`, { unit: null, isBarricade: false, barricadeTeam: null, barricadeId: null, isMine: false });
+            }
+        }
+        if (Array.isArray(serialized.tiles)) {
+            for (const t of serialized.tiles) {
+                if (board.has(t.k)) {
+                    let uCopy = t.unit ? { ...t.unit } : null;
+                    if (uCopy) delete uCopy.isAnimating;
+                    board.set(t.k, {
+                        unit: uCopy,
+                        isBarricade: !!t.isBarricade,
+                        barricadeTeam: t.barricadeTeam || null,
+                        barricadeId: t.barricadeId || null,
+                        isMine: !!t.isMine
+                    });
+                }
+            }
+        }
+        return {
+            board,
+            credits: { ...serialized.credits },
+            activeTeam: serialized.activeTeam,
+            winner: serialized.winner || null,
+            actionUsed: !!serialized.actionUsed,
+            deployCounts: { ...(serialized.deployCounts || { 'BLUE': 0, 'RED': 0 }) },
+            hasFlag: { ...(serialized.hasFlag || { 'BLUE': false, 'RED': false }) },
+            combats: Array.isArray(serialized.combats) ? [...serialized.combats] : [],
+            lastMove: serialized.lastMove ? { ...serialized.lastMove } : null
+        };
+    }
+
+    doesLiveStateMatch(serialized) {
+        if (!serialized || this.history.length === 0) return false;
+        const liveIdx = this.history.length - 1;
+        if (typeof serialized.turnId === 'number' && liveIdx !== serialized.turnId) return false;
+
+        const liveSnap = this.history[liveIdx];
+        if (liveSnap.activeTeam !== serialized.activeTeam) return false;
+        if ((liveSnap.winner || null) !== (serialized.winner || null)) return false;
+        if (liveSnap.credits.BLUE !== serialized.credits.BLUE || liveSnap.credits.RED !== serialized.credits.RED) return false;
+
+        let liveNonEmptyCount = 0;
+        for (let [k, v] of liveSnap.board.entries()) {
+            if (v.unit || v.isBarricade || v.isMine) liveNonEmptyCount++;
+        }
+        const remoteTiles = Array.isArray(serialized.tiles) ? serialized.tiles : [];
+        if (liveNonEmptyCount !== remoteTiles.length) return false;
+
+        for (const rt of remoteTiles) {
+            const lt = liveSnap.board.get(rt.k);
+            if (!lt) return false;
+            if (!!lt.isBarricade !== !!rt.isBarricade) return false;
+            if (lt.isBarricade && (lt.barricadeTeam || null) !== (rt.barricadeTeam || null)) return false;
+            if (!!lt.isMine !== !!rt.isMine) return false;
+            if (!!lt.unit !== !!rt.unit) return false;
+            if (lt.unit && rt.unit) {
+                if (lt.unit.team !== rt.unit.team ||
+                    lt.unit.type !== rt.unit.type ||
+                    lt.unit.strength !== rt.unit.strength ||
+                    lt.unit.speed !== rt.unit.speed) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    applyRemoteSnapshot(serialized) {
+        if (!serialized) return false;
+        const snap = this.deserializeSnapshot(serialized);
+        const targetTurnId = typeof serialized.turnId === 'number' ? serialized.turnId : this.history.length;
+
+        while (this.history.length <= targetTurnId) {
+            const filler = this.history.length > 0
+                ? this.deserializeSnapshot(this.serializeSnapshot(this.history.length - 1))
+                : snap;
+            this.history.push(filler);
+        }
+        if (this.history.length > targetTurnId + 1) {
+            this.history.length = targetTurnId + 1;
+        }
+        this.history[targetTurnId] = snap;
+
+        this.loadSnapshot(targetTurnId);
+        this.selectedTile = null;
+        this.invalidateOverlayCache();
+
+        if (this.winner) {
+            this.gameFinished = true;
+            if (this.timerInterval) clearInterval(this.timerInterval);
+            const winName = this.winner === 'BLUE' ? this.blueName : this.redName;
+            if (this.onWinner) this.onWinner(this.winner, `${winName} won the game!`);
+        } else if (this.timerDuration > 0) {
+            this.startTimer();
+        }
+
+        if (this.onStateChange) this.onStateChange();
+        this.saveSessionToStorage();
+        return true;
+    }
+
+    serializeFullHistory() {
+        return this.history.map((_, idx) => this.serializeSnapshot(idx));
+    }
+
+    applyRemoteHistory(serializedHistory) {
+        if (!Array.isArray(serializedHistory) || serializedHistory.length === 0) return false;
+        this.history = serializedHistory.map(s => this.deserializeSnapshot(s));
+        this.loadSnapshot(this.history.length - 1);
+        this.selectedTile = null;
+        this.invalidateOverlayCache();
+
+        if (this.winner) {
+            this.gameFinished = true;
+            if (this.timerInterval) clearInterval(this.timerInterval);
+            const winName = this.winner === 'BLUE' ? this.blueName : this.redName;
+            if (this.onWinner) this.onWinner(this.winner, `${winName} won the game!`);
+        } else if (this.timerDuration > 0) {
+            this.startTimer();
+        }
+
+        if (this.onStateChange) this.onStateChange();
+        this.saveSessionToStorage();
+        return true;
+    }
+
+    saveSessionToStorage() {
+        if (!this.enablePersistence) return;
+        if (typeof sessionStorage === 'undefined') return;
+        try {
+            const sessionData = {
+                version: 1,
+                timestamp: Date.now(),
+                gameMode: this.gameMode || 'LOCAL',
+                localTeam: this.localTeam || 'BLUE',
+                config: {
+                    ...this.config,
+                    blueName: this.blueName,
+                    redName: this.redName
+                },
+                blueName: this.blueName,
+                redName: this.redName,
+                winner: this.winner || null,
+                gameFinished: !!this.gameFinished,
+                logs: this.logs.slice(-50),
+                history: this.serializeFullHistory(),
+                networkInfo: this.network ? {
+                    isHost: !!this.network.isHost,
+                    hostId: this.network.hostId || null,
+                    guestName: this.network.guestName || 'Guest'
+                } : null
+            };
+            sessionStorage.setItem('TPOW_ACTIVE_SESSION', JSON.stringify(sessionData));
+        } catch (e) {
+            console.warn('Failed to save game session:', e);
+        }
+    }
+
+    restoreFromSession(sessionData) {
+        if (!sessionData) return false;
+        if (sessionData.blueName) {
+            this.blueName = sessionData.blueName;
+            if (this.config) this.config.blueName = sessionData.blueName;
+        }
+        if (sessionData.redName) {
+            this.redName = sessionData.redName;
+            if (this.config) this.config.redName = sessionData.redName;
+        }
+        if (sessionData.localTeam) {
+            this.localTeam = sessionData.localTeam;
+        }
+        if (Array.isArray(sessionData.logs)) {
+            this.logs = [...sessionData.logs];
+        }
+        if (Array.isArray(sessionData.history) && sessionData.history.length > 0) {
+            this.history = sessionData.history.map(s => this.deserializeSnapshot(s));
+            this.loadSnapshot(this.history.length - 1);
+        }
+        this.winner = sessionData.winner || this.winner || null;
+        this.gameFinished = !!sessionData.gameFinished || !!this.winner;
+        if (this.onLog) this.onLog();
+        if (this.onStateChange) this.onStateChange();
+        if (this.winner && this.onWinner) {
+            const winName = this.winner === 'BLUE' ? this.blueName : this.redName;
+            this.onWinner(this.winner, `${winName} won the game!`);
+        }
+        return true;
     }
 
     startTimer() {
@@ -243,15 +591,17 @@ class HexGame {
 
                 if (this.timeLeft <= 0) {
                     clearInterval(this.timerInterval);
+                    const currentLiveTeam = this.liveActiveTeam;
                     let isActivePlayer = true;
                     if (this.network && this.localTeam) {
-                        isActivePlayer = (this.localTeam === this.activeTeam);
+                        isActivePlayer = (this.localTeam === currentLiveTeam);
                     }
-                    if (this.gameMode === 'AI' && this.activeTeam === 'RED') {
+                    if (this.gameMode === 'AI' && currentLiveTeam === 'RED') {
                         isActivePlayer = false; // AI handles its own execution
                     }
 
                     if (isActivePlayer) {
+                        this.ensureLiveState();
                         this.logSystem(`Time expired! Turn skipped.`);
                         this.endTurn();
                     }
@@ -278,7 +628,13 @@ class HexGame {
                 uCopy = { ...v.unit };
                 delete uCopy.isAnimating;
             }
-            snap.board.set(k, { unit: uCopy, isBarricade: v.isBarricade });
+            snap.board.set(k, {
+                unit: uCopy,
+                isBarricade: v.isBarricade,
+                barricadeTeam: v.barricadeTeam || null,
+                barricadeId: v.barricadeId || null,
+                isMine: !!v.isMine
+            });
         }
         snap.lastMove = this.lastMove ? { ...this.lastMove } : null;
         // Save and increment
@@ -286,6 +642,7 @@ class HexGame {
         this.historyIndex = this.history.length - 1;
         this.activeCombats = []; // Clear for next turn's actions
         this.lastMove = null;
+        this.saveSessionToStorage();
     }
 
     loadSnapshot(index) {
@@ -312,7 +669,13 @@ class HexGame {
                 uCopy = { ...v.unit };
                 delete uCopy.isAnimating;
             }
-            this.board.set(k, { unit: uCopy, isBarricade: v.isBarricade });
+            this.board.set(k, {
+                unit: uCopy,
+                isBarricade: v.isBarricade,
+                barricadeTeam: v.barricadeTeam || null,
+                barricadeId: v.barricadeId || null,
+                isMine: !!v.isMine
+            });
         }
         this.credits = { ...snap.credits };
         this.activeTeam = snap.activeTeam;
@@ -363,6 +726,8 @@ class HexGame {
     // Deploy unit logical check
     canDeploy(team, col, row, unitCost, isFlag = false) {
         if (this.historyIndex !== this.history.length - 1) return { valid: false, msg: "Cannot deploy in history mode." };
+        if (this.actionUsed || this.phase !== 'MAIN' || this.winner) return { valid: false, msg: "Action unavailable." };
+        if (team !== this.activeTeam) return { valid: false, msg: "Not your turn." };
         if (!this.isValid(col, row)) return { valid: false, msg: "Out of bounds." };
         if (this.credits[team] < unitCost) return { valid: false, msg: "Insufficient credits." };
         if (this.getTile(col, row).unit !== null) return { valid: false, msg: "Tile occupied." };
@@ -381,15 +746,14 @@ class HexGame {
     }
 
     deployUnit(team, type, strength, speed, col, row, isSyncEvent = false) {
+        if (isSyncEvent) {
+            this.ensureLiveState();
+        }
         const u = new Unit(team, type, strength, speed, this.config.flagCost);
         const check = this.canDeploy(team, col, row, u.cost, type === 'flag');
         if (!check.valid) {
             this.logSystem(`Deployment Failed: ${check.msg}`);
             return false;
-        }
-
-        if (!isSyncEvent && this.network) {
-            this.network.sendData({ type: 'DEPLOY', team, unitType: type, str: strength, spd: speed, col, row });
         }
 
         this.credits[team] -= u.cost;
@@ -400,15 +764,45 @@ class HexGame {
 
         this.logAction(team, `Deployed ${type} unit for ${u.cost} cr.`);
         this.actionUsed = true;
-        this.endTurn(isSyncEvent, true);
-
         this.checkWinConditions();
+        if (!this.winner) this.endTurn(isSyncEvent, true);
+
+        if (!isSyncEvent && this.network) {
+            this.network.recordAndSendTurn({ type: 'DEPLOY', team, unitType: type, str: strength, spd: speed, col, row });
+        }
         return true;
+    }
+
+    getMineIncome(team, viewerTeam = null) {
+        const mineCredit = (this.config && typeof this.config.mineCredit === 'number') ? this.config.mineCredit : 5;
+        if (mineCredit <= 0) return 0;
+
+        let minesHeld = 0;
+        for (let [key, tile] of this.board.entries()) {
+            if (tile && tile.isMine && tile.unit && tile.unit.team === team && tile.unit.type !== 'observation') {
+                if (viewerTeam && viewerTeam !== team) {
+                    const [c, r] = key.split(',').map(Number);
+                    if (!this.canSeeUnit(c, r, viewerTeam)) continue;
+                }
+                minesHeld++;
+            }
+        }
+        return minesHeld * mineCredit;
+    }
+
+    applyMineIncome(team) {
+        const maxCredits = (this.config && typeof this.config.credits === 'number') ? this.config.credits : 100;
+        const bonus = this.getMineIncome(team);
+        if (bonus > 0) {
+            const prev = this.credits[team];
+            this.credits[team] = Math.min(maxCredits, prev + bonus);
+        }
     }
 
     switchPhase() {
         this.activeTeam = this.activeTeam === 'BLUE' ? 'RED' : 'BLUE';
         this.actionUsed = false;
+        this.applyMineIncome(this.activeTeam);
         const currentName = this.activeTeam === 'BLUE' ? this.blueName : this.redName;
         this.logSystem(`${currentName}'s Turn.`);
 
@@ -420,10 +814,12 @@ class HexGame {
     }
 
     endTurn(isSyncEvent = false, doNotBroadcast = false) {
-        if (this.winner) return;
-
-        if (!isSyncEvent && !doNotBroadcast && this.network) {
-            this.network.sendData({ type: 'SKIP' });
+        if (this.winner) return false;
+        if (isSyncEvent) {
+            this.ensureLiveState();
+        } else if (this.historyIndex !== this.history.length - 1) {
+            this.logSystem("Viewing history. Return to Live state to take actions.");
+            return false;
         }
 
         for (let [k, v] of this.board.entries()) {
@@ -432,10 +828,20 @@ class HexGame {
             }
         }
 
+        this.applyBarricadeKillZoneDamage(this.activeTeam);
+
         this.invalidateOverlayCache();
-        this.switchPhase();
-        this.saveSnapshot();
-        if (this.onStateChange) this.onStateChange();
+        this.checkWinConditions();
+        if (!this.winner) {
+            this.switchPhase();
+            this.saveSnapshot();
+            if (this.onStateChange) this.onStateChange();
+        }
+
+        if (!isSyncEvent && !doNotBroadcast && this.network) {
+            this.network.recordAndSendTurn({ type: 'SKIP' });
+        }
+        return true;
     }
 
     verifyCaptureSetup() {
@@ -544,14 +950,13 @@ class HexGame {
     }
 
     moveUnit(startCol, startRow, endCol, endRow, isSyncEvent = false) {
+        if (isSyncEvent) {
+            this.ensureLiveState();
+        }
         if (this.actionUsed || this.phase !== 'MAIN' || this.winner || this.historyIndex !== this.history.length - 1) return false;
         const startTile = this.getTile(startCol, startRow);
-        const u = startTile.unit;
+        const u = startTile ? startTile.unit : null;
         if (!u || u.team !== this.activeTeam) return false;
-
-        if (!isSyncEvent && this.network) {
-            this.network.sendData({ type: 'MOVE', col: startCol, row: startRow, tC: endCol, tR: endRow });
-        }
 
         const path = this.findPath(startCol, startRow, endCol, endRow, u.team, u.speed);
         if (!path) {
@@ -663,6 +1068,10 @@ class HexGame {
         this.invalidateOverlayCache();
         this.checkWinConditions();
         if (!this.winner) this.endTurn(isSyncEvent, true);
+
+        if (!isSyncEvent && this.network) {
+            this.network.recordAndSendTurn({ type: 'MOVE', col: startCol, row: startRow, tC: endCol, tR: endRow });
+        }
         return true;
     }
 
@@ -744,8 +1153,11 @@ class HexGame {
                     return { valid: false, reason: "Barricade touches home colored zones." };
                 }
                 previewSet.add(`${pt.col},${pt.row}`);
-                if (pt.col === col && pt.row === row) continue; // the unit itself
                 const nT = this.getTile(pt.col, pt.row);
+                if (nT && nT.isMine) {
+                    return { valid: false, reason: "Cannot build a barricade on a gold mine." };
+                }
+                if (pt.col === col && pt.row === row) continue; // the unit itself
                 if (nT.unit !== null || nT.isBarricade) {
                     return { valid: false, reason: "Target footprint is already occupied." };
                 }
@@ -777,30 +1189,33 @@ class HexGame {
     }
 
     createBarricade(col, row, offset, isSyncEvent = false) {
+        if (isSyncEvent) {
+            this.ensureLiveState();
+        }
         const check = this.canBarricade(col, row, offset);
         if (!check.valid) {
             this.logSystem(`Error: ${check.reason}`);
             return false;
         }
 
-        if (!isSyncEvent && this.network) {
-            this.network.sendData({ type: 'BARRICADE', col, row, offset });
-        }
-
         const cost = this.config ? (this.config.barricadeCost || 10) : 10;
         const t = this.getTile(col, row);
         const u = t.unit;
         const footprint = this.getBarricadeFootprint(col, row, u.strength, offset);
+        const barricadeId = `b_${col}_${row}_${this.history.length}`;
 
         // Commit Barricade
         this.credits[this.activeTeam] -= cost;
         // Kill unit
         t.unit = null;
-        // Paint black
+        // Paint barricade tiles with team ownership and group ID
         let previewKeys = new Set();
         for (let pt of footprint) {
             if (this.isValid(pt.col, pt.row)) {
-                this.getTile(pt.col, pt.row).isBarricade = true;
+                const bTile = this.getTile(pt.col, pt.row);
+                bTile.isBarricade = true;
+                bTile.barricadeTeam = this.activeTeam;
+                bTile.barricadeId = barricadeId;
                 previewKeys.add(`${pt.col},${pt.row}`);
             }
         }
@@ -816,6 +1231,7 @@ class HexGame {
 
         if (this.isValid(obsCol, obsRow)) {
             const obsUnit = new Unit(this.activeTeam, 'observation', 0, 0, 0);
+            obsUnit.barricadeId = barricadeId;
             this.setUnit(obsCol, obsRow, obsUnit);
         }
 
@@ -825,7 +1241,205 @@ class HexGame {
         this.invalidateOverlayCache();
         this.checkWinConditions();
         if (!this.winner) this.endTurn(isSyncEvent, true);
+
+        if (!isSyncEvent && this.network) {
+            this.network.recordAndSendTurn({ type: 'BARRICADE', col, row, offset });
+        }
         return true;
+    }
+
+    getBarricadeGroupKeys(col, row) {
+        const startTile = this.getTile(col, row);
+        if (!startTile || !startTile.isBarricade) return [];
+
+        const targetId = startTile.barricadeId;
+        const targetTeam = startTile.barricadeTeam;
+
+        if (targetId) {
+            const keys = [];
+            for (let [k, v] of this.board.entries()) {
+                if (v.isBarricade && v.barricadeId === targetId) {
+                    keys.push(k);
+                }
+            }
+            return keys;
+        }
+
+        // Fallback for barricades without barricadeId: contiguous vertical tiles of same team
+        const keys = [`${col},${row}`];
+        let rUp = row - 1;
+        while (this.isValid(col, rUp)) {
+            const nt = this.getTile(col, rUp);
+            if (nt && nt.isBarricade && nt.barricadeTeam === targetTeam && !nt.barricadeId) {
+                keys.push(`${col},${rUp}`);
+                rUp--;
+            } else {
+                break;
+            }
+        }
+        let rDown = row + 1;
+        while (this.isValid(col, rDown)) {
+            const nt = this.getTile(col, rDown);
+            if (nt && nt.isBarricade && nt.barricadeTeam === targetTeam && !nt.barricadeId) {
+                keys.push(`${col},${rDown}`);
+                rDown++;
+            } else {
+                break;
+            }
+        }
+        return keys;
+    }
+
+    canRemoveBarricade(col, row) {
+        if (this.actionUsed || this.phase !== 'MAIN' || this.winner || this.historyIndex !== this.history.length - 1) {
+            return { valid: false, reason: "Action unavailable." };
+        }
+        if (this.config && this.config.barricadeRemovable === false) {
+            return { valid: false, reason: "Barricades are not removable in this game." };
+        }
+        if (!this.isValid(col, row)) {
+            return { valid: false, reason: "Out of bounds." };
+        }
+        const t = this.getTile(col, row);
+        if (!t || !t.isBarricade) {
+            return { valid: false, reason: "Tile is not a barricade." };
+        }
+        if (t.barricadeTeam !== this.activeTeam) {
+            return { valid: false, reason: "You can only remove barricades that you built." };
+        }
+        return { valid: true };
+    }
+
+    removeBarricade(col, row, isSyncEvent = false) {
+        if (isSyncEvent) {
+            this.ensureLiveState();
+        }
+        const check = this.canRemoveBarricade(col, row);
+        if (!check.valid) {
+            this.logSystem(`Error: ${check.reason}`);
+            return false;
+        }
+
+        const t = this.getTile(col, row);
+        const targetId = t.barricadeId;
+        const groupKeys = this.getBarricadeGroupKeys(col, row);
+
+        for (const k of groupKeys) {
+            const bt = this.board.get(k);
+            if (bt) {
+                bt.isBarricade = false;
+                bt.barricadeTeam = null;
+                bt.barricadeId = null;
+            }
+        }
+
+        // Remove the observation unit associated with this barricade
+        if (targetId) {
+            for (let [k, v] of this.board.entries()) {
+                if (v.unit && v.unit.type === 'observation' && v.unit.barricadeId === targetId) {
+                    v.unit = null;
+                }
+            }
+        } else {
+            // Fallback: check adjacent observation unit behind the removed barricade
+            const obsDir = this.activeTeam === 'BLUE' ? -1 : 1;
+            const obsTile = this.getTile(col + obsDir, row);
+            if (obsTile && obsTile.unit && obsTile.unit.type === 'observation' && obsTile.unit.team === this.activeTeam) {
+                obsTile.unit = null;
+            }
+        }
+
+        this.logAction(this.activeTeam, `Removed barricade at [${col},${row}].`);
+        this.actionUsed = true;
+        this.selectedTile = null;
+        this.invalidateOverlayCache();
+        this.checkWinConditions();
+        if (!this.winner) this.endTurn(isSyncEvent, true);
+
+        if (!isSyncEvent && this.network) {
+            this.network.recordAndSendTurn({ type: 'REMOVE_BARRICADE', col, row });
+        }
+        return true;
+    }
+
+    getBarricadeKillZones() {
+        const dangerForBlue = new Set();
+        const dangerForRed = new Set();
+
+        if (this.config && this.config.barricadeKillZone === false) {
+            return { dangerForBlue, dangerForRed };
+        }
+
+        const blueBarricades = [];
+        const redBarricades = [];
+
+        for (let col = 0; col < this.cols; col++) {
+            for (let row = 0; row < this.rows; row++) {
+                const t = this.getTile(col, row);
+                if (t && t.isBarricade) {
+                    if (t.barricadeTeam === 'BLUE') blueBarricades.push({ col, row });
+                    else if (t.barricadeTeam === 'RED') redBarricades.push({ col, row });
+                }
+            }
+        }
+
+        if (blueBarricades.length === 0 && redBarricades.length === 0) {
+            return { dangerForBlue, dangerForRed };
+        }
+
+        for (let col = 0; col < this.cols; col++) {
+            for (let row = 0; row < this.rows; row++) {
+                const t = this.getTile(col, row);
+                if (!t || t.isBarricade) continue;
+                const key = `${col},${row}`;
+
+                for (const b of blueBarricades) {
+                    if (hexMath.offsetDistance(col, row, b.col, b.row) <= 2) {
+                        dangerForRed.add(key);
+                        break;
+                    }
+                }
+                for (const b of redBarricades) {
+                    if (hexMath.offsetDistance(col, row, b.col, b.row) <= 2) {
+                        dangerForBlue.add(key);
+                        break;
+                    }
+                }
+            }
+        }
+
+        return { dangerForBlue, dangerForRed };
+    }
+
+    applyBarricadeKillZoneDamage(team) {
+        if (this.config && this.config.barricadeKillZone === false) return;
+
+        const { dangerForBlue, dangerForRed } = this.getBarricadeKillZones();
+        const dangerSet = team === 'BLUE' ? dangerForBlue : dangerForRed;
+        if (dangerSet.size === 0) return;
+
+        for (const key of dangerSet) {
+            const tile = this.board.get(key);
+            if (!tile || !tile.unit) continue;
+            const u = tile.unit;
+            // Only affect combat units belonging to the team that just finished their turn
+            if (u.team !== team || u.isFlag || u.type === 'observation') continue;
+
+            const [cStr, rStr] = key.split(',');
+            const c = parseInt(cStr, 10);
+            const r = parseInt(rStr, 10);
+
+            u.strength -= 1;
+            if (u.strength <= 0) {
+                tile.pendingDeathVisual = { ...u };
+                tile.unit = null;
+                this.activeCombats.push({ c, r });
+                if (this.onCombat) this.onCombat(c, r);
+                this.logAction(team, `Unit at [${c},${r}] was destroyed by enemy barricade kill zone!`, true);
+            } else {
+                this.logAction(team, `Unit at [${c},${r}] lost 1 Power in enemy barricade kill zone (now ${u.strength}).`, true);
+            }
+        }
     }
 
     getFogOfWar(col, row, perspective, specificUnit = null) {
@@ -1000,11 +1614,42 @@ class HexGame {
         return { spot, inspect, team: u.team };
     }
 
+    getCombinedEnemyVision(viewerTeam) {
+        let spot = new Set();
+        let inspect = new Set();
+
+        for (let col = 0; col < this.cols; col++) {
+            for (let row = 0; row < this.rows; row++) {
+                const t = this.getTile(col, row);
+                if (!t || !t.unit || t.unit.isFlag) continue;
+                const u = t.unit;
+                if (u.team === viewerTeam) continue;
+
+                // Only include enemy units visible to viewerTeam
+                if (u.type !== 'observation' && !this.canSeeUnit(col, row, viewerTeam)) {
+                    continue;
+                }
+
+                const ownKey = `${col},${row}`;
+                spot.add(ownKey);
+                inspect.add(ownKey);
+
+                const v = this.getUnitVision(col, row);
+                for (let k of v.spot) spot.add(k);
+                for (let k of v.inspect) inspect.add(k);
+            }
+        }
+
+        return { spot, inspect };
+    }
+
     checkWinConditions() {
         if (this.winner) return;
 
         let blueFlagCount = 0;
         let redFlagCount = 0;
+        let blueUnitCount = 0;
+        let redUnitCount = 0;
 
         let bInvaded = false;
         let rInvaded = false;
@@ -1014,6 +1659,11 @@ class HexGame {
             for (let row = 0; row < this.rows; row++) {
                 const u = this.getTile(col, row).unit;
                 if (!u) continue;
+
+                if (u.type !== 'observation') {
+                    if (u.team === 'BLUE') blueUnitCount++;
+                    if (u.team === 'RED') redUnitCount++;
+                }
 
                 if (u.isFlag) {
                     if (u.team === 'BLUE') blueFlagCount++;
@@ -1029,16 +1679,37 @@ class HexGame {
                 }
             }
         }
-        if (bInvaded) this.setWinner('BLUE', `${this.blueName} successfully invaded the opponent's zone!`);
-        if (rInvaded) this.setWinner('RED', `${this.redName} successfully invaded the opponent's zone!`);
+        if (bInvaded) {
+            this.setWinner('BLUE', `${this.blueName} successfully invaded the opponent's zone!`);
+            return;
+        }
+        if (rInvaded) {
+            this.setWinner('RED', `${this.redName} successfully invaded the opponent's zone!`);
+            return;
+        }
+
+        const blueEliminated = (blueUnitCount === 0 && this.credits['BLUE'] <= 0);
+        const redEliminated = (redUnitCount === 0 && this.credits['RED'] <= 0);
+
+        if (blueEliminated && redEliminated) {
+            const winTeam = this.activeTeam;
+            const loseName = winTeam === 'BLUE' ? this.redName : this.blueName;
+            this.setWinner(winTeam, `${loseName} has no units and no credits remaining!`);
+        } else if (blueEliminated) {
+            this.setWinner('RED', `${this.blueName} has no units and no credits remaining!`);
+        } else if (redEliminated) {
+            this.setWinner('BLUE', `${this.redName} has no units and no credits remaining!`);
+        }
     }
 
     setWinner(team, reason) {
         this.winner = team;
         this.gameFinished = true;
+        if (this.timerInterval) clearInterval(this.timerInterval);
         const winName = team === 'BLUE' ? this.blueName : this.redName;
         this.logSystem(`GAME OVER. ${winName} wins! ${reason}`);
         this.saveSnapshot();
+        if (this.onStateChange) this.onStateChange();
         if (this.onWinner) this.onWinner(team, reason);
     }
 }
@@ -1228,8 +1899,10 @@ class RenderEngine {
         requestAnimationFrame(() => this.drawLoop());
     }
 
-    getMeshPattern() {
-        if (this._meshPattern) return this._meshPattern;
+    getMeshPattern(team = null) {
+        if (!this._meshPatterns) this._meshPatterns = {};
+        const key = team || 'NEUTRAL';
+        if (this._meshPatterns[key]) return this._meshPatterns[key];
 
         // Brick Wall Texture configuration
         const pCanvas = document.createElement('canvas');
@@ -1237,12 +1910,18 @@ class RenderEngine {
         pCanvas.height = 16;
         const pCtx = pCanvas.getContext('2d');
 
-        // Match empty void baseline mathematically
-        pCtx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-        pCtx.fillRect(0, 0, 30, 16);
+        if (team === 'BLUE') {
+            pCtx.fillStyle = 'rgba(30, 58, 138, 0.45)';
+            pCtx.strokeStyle = 'rgba(147, 197, 253, 0.48)';
+        } else if (team === 'RED') {
+            pCtx.fillStyle = 'rgba(127, 29, 29, 0.45)';
+            pCtx.strokeStyle = 'rgba(252, 165, 165, 0.48)';
+        } else {
+            pCtx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+            pCtx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+        }
 
-        // Draw brick mortar lines perfectly crisp natively using 0.5px translation boundaries
-        pCtx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+        pCtx.fillRect(0, 0, 30, 16);
         pCtx.lineWidth = 1;
 
         // Horizontal mortar strokes seamlessly delineating rows
@@ -1269,8 +1948,56 @@ class RenderEngine {
         pCtx.lineTo(0.5, 16);
         pCtx.stroke();
 
-        this._meshPattern = this.ctx.createPattern(pCanvas, 'repeat');
-        return this._meshPattern;
+        this._meshPatterns[key] = this.ctx.createPattern(pCanvas, 'repeat');
+        return this._meshPatterns[key];
+    }
+
+    drawSkullIcon(cx, cy, size, team) {
+        const ctx = this.ctx;
+        const color = team === 'BLUE' ? '#60a5fa' : '#f87171';
+        const r = size;
+
+        ctx.save();
+        ctx.fillStyle = color;
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+        ctx.lineWidth = Math.max(1, r * 0.16);
+        ctx.lineJoin = 'round';
+
+        // Cranium + Jaw silhouette
+        ctx.beginPath();
+        ctx.arc(cx, cy - r * 0.22, r * 0.75, Math.PI * 0.82, Math.PI * 0.18, false);
+        ctx.lineTo(cx + r * 0.44, cy + r * 0.65);
+        ctx.lineTo(cx - r * 0.44, cy + r * 0.65);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Eye sockets
+        ctx.fillStyle = '#090a0f';
+        ctx.beginPath();
+        ctx.arc(cx - r * 0.28, cy - r * 0.2, r * 0.2, 0, Math.PI * 2);
+        ctx.arc(cx + r * 0.28, cy - r * 0.2, r * 0.2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Nasal cavity
+        ctx.beginPath();
+        ctx.moveTo(cx, cy + r * 0.02);
+        ctx.lineTo(cx - r * 0.12, cy + r * 0.24);
+        ctx.lineTo(cx + r * 0.12, cy + r * 0.24);
+        ctx.closePath();
+        ctx.fill();
+
+        // Jaw teeth lines
+        ctx.strokeStyle = '#090a0f';
+        ctx.lineWidth = Math.max(0.8, r * 0.12);
+        ctx.beginPath();
+        ctx.moveTo(cx - r * 0.15, cy + r * 0.4);
+        ctx.lineTo(cx - r * 0.15, cy + r * 0.63);
+        ctx.moveTo(cx + r * 0.15, cy + r * 0.4);
+        ctx.lineTo(cx + r * 0.15, cy + r * 0.63);
+        ctx.stroke();
+
+        ctx.restore();
     }
 
     resize() {
@@ -1620,17 +2347,21 @@ class RenderEngine {
         }
         this.ctx.stroke();
 
-        // Dynamically compute UX Threat Map Overlays natively via Asymmetric HUD configuration
-        let showRedMove = false;
-        let showBlueMove = false;
-
-        // In AI and Online modes, persistently use the local human player's viewpoint and toggles
+        // Dynamically compute UX Threat Map & Enemy Visibility Overlays via HUD configuration
         let viewerTeam = (this.game.gameMode === 'AI' || this.game.gameMode === 'ONLINE') ? (this.game.localTeam || 'BLUE') : this.game.activeTeam;
         let prefix = viewerTeam.toLowerCase();
-        let bR = document.getElementById(`chk-${prefix}-cfg-red`);
-        let bB = document.getElementById(`chk-${prefix}-cfg-blue`);
-        showRedMove = bR ? bR.checked : false;
-        showBlueMove = bB ? bB.checked : false;
+        let chkMove = document.getElementById(`chk-${prefix}-cfg-move`);
+        let chkVis = document.getElementById(`chk-${prefix}-cfg-vis`);
+        let showMoveOverlay = chkMove ? chkMove.checked : false;
+        let showVisOverlay = chkVis ? chkVis.checked : false;
+
+        let showRedMove = showMoveOverlay;
+        let showBlueMove = showMoveOverlay;
+
+        let enemyVisionOverlay = null;
+        if (showVisOverlay && this.game && typeof this.game.getCombinedEnemyVision === 'function') {
+            enemyVisionOverlay = this.game.getCombinedEnemyVision(viewerTeam);
+        }
 
         let blueThreat = new Set();
         let redThreat = new Set();
@@ -1710,6 +2441,13 @@ class RenderEngine {
             }
         }
 
+        let blueCombinedReach = null;
+        let redCombinedReach = null;
+        if (showMoveOverlay && showVisOverlay) {
+            blueCombinedReach = new Set([...blueThreat, ...blueThreatUncertain]);
+            redCombinedReach = new Set([...redThreat, ...redThreatUncertain]);
+        }
+
         const isAIHeatmapDebug = (this.game.ui && this.game.ui.showAIHeatmap);
 
         let aiTreeKeys = null;
@@ -1725,6 +2463,10 @@ class RenderEngine {
             if (posVals.length > 0) heatmapMaxPos = Math.max(...posVals);
             if (negVals.length > 0) heatmapMaxNeg = Math.max(...negVals.map(v => Math.abs(v)));
         }
+
+        const killZones = (this.game && typeof this.game.getBarricadeKillZones === 'function')
+            ? this.game.getBarricadeKillZones()
+            : { dangerForBlue: new Set(), dangerForRed: new Set() };
 
         // Draw board base
         for (let col = 0; col < this.game.cols; col++) {
@@ -1743,36 +2485,46 @@ class RenderEngine {
                 if (col === 0) fill = 'rgba(59, 130, 246, 0.3)'; // Brighter Blue zone
                 if (col === this.game.cols - 1) fill = 'rgba(239, 68, 68, 0.3)'; // Brighter Red zone
 
-                // Threat Map Overlays (Calculated natively based on Fog of War)
+                // Overlays (Enemy Visibility Overlay vs Movement Range Fill Overlay)
                 if (!isHomeBase) {
-                    let rT = redThreat.has(key);
-                    let bT = blueThreat.has(key);
+                    if (showVisOverlay && enemyVisionOverlay) {
+                        if (enemyVisionOverlay.inspect.has(key)) {
+                            fill = 'rgba(255, 255, 255, 0.08)';
+                        } else if (enemyVisionOverlay.spot.has(key)) {
+                            fill = 'rgba(255, 255, 255, 0.04)';
+                        } else {
+                            fill = 'rgba(0, 0, 0, 0.2)';
+                        }
+                    } else if (showMoveOverlay) {
+                        let rT = redThreat.has(key);
+                        let bT = blueThreat.has(key);
 
-                    let rTU = !rT && redThreatUncertain.has(key);
-                    let bTU = !bT && blueThreatUncertain.has(key);
+                        let rTU = !rT && redThreatUncertain.has(key);
+                        let bTU = !bT && blueThreatUncertain.has(key);
 
-                    if (rT || bT || rTU || bTU) {
-                        let pulse = (Math.sin(Date.now() / 300) + 1) / 2;
+                        if (rT || bT || rTU || bTU) {
+                            let pulse = (Math.sin(Date.now() / 300) + 1) / 2;
 
-                        let wR = rT ? 1 : (rTU ? pulse : 0);
-                        let wB = bT ? 1 : (bTU ? pulse : 0);
+                            let wR = rT ? 1 : (rTU ? pulse : 0);
+                            let wB = bT ? 1 : (bTU ? pulse : 0);
 
-                        let totalW = wR + wB;
-                        if (totalW > 0) {
-                            let pctR = wR / totalW;
-                            let pctB = wB / totalW;
+                            let totalW = wR + wB;
+                            if (totalW > 0) {
+                                let pctR = wR / totalW;
+                                let pctB = wB / totalW;
 
-                            // Severely darken the absolute max luminosity so it reads as a 'dark' hint rather than a neon grid natively
-                            let R = Math.floor(pctR * 210);
-                            let B = Math.floor(pctB * 210);
+                                // Severely darken the absolute max luminosity so it reads as a 'dark' hint rather than a neon grid natively
+                                let R = Math.floor(pctR * 210);
+                                let B = Math.floor(pctB * 210);
 
-                            // Base standard threat projection is 0.10 (subtle faint). 
-                            // Strongest overlap intersection maximizes at 0.15.
-                            let minW = Math.min(wR, wB);
-                            let maxW = Math.max(wR, wB);
-                            let finalAlpha = (0.10 * maxW) + (0.05 * minW);
+                                // Base standard threat projection is 0.10 (subtle faint). 
+                                // Strongest overlap intersection maximizes at 0.15.
+                                let minW = Math.min(wR, wB);
+                                let maxW = Math.max(wR, wB);
+                                let finalAlpha = (0.10 * maxW) + (0.05 * minW);
 
-                            fill = `rgba(${R}, 0, ${B}, ${finalAlpha.toFixed(3)})`;
+                                fill = `rgba(${R}, 0, ${B}, ${finalAlpha.toFixed(3)})`;
+                            }
                         }
                     }
                 }
@@ -1789,14 +2541,29 @@ class RenderEngine {
                         } else if (vis.spot.has(key)) {
                             // Spot: Darker translucent gray (0.04 alpha pure white over dark background)
                             fill = 'rgba(255, 255, 255, 0.04)';
+                        } else {
+                            fill = 'rgba(0, 0, 0, 0.2)';
                         }
                     }
                 }
 
-                // Barricade styling
+                // Gold Mine tile styling
+                if (tile && tile.isMine) {
+                    fill = 'rgba(251, 191, 36, 0.45)';
+                    stroke = '#fbbf24';
+                    lineWidth = 2;
+                }
+
+                // Barricade styling (gray+blue for Blue, gray+red for Red)
                 if (tile.isBarricade) {
-                    fill = this.getMeshPattern(); // Replaces solid black with transparent mesh
-                    stroke = '#e2e8f0'; // bright gray, almost white
+                    fill = this.getMeshPattern(tile.barricadeTeam);
+                    if (tile.barricadeTeam === 'BLUE') {
+                        stroke = '#93c5fd';
+                    } else if (tile.barricadeTeam === 'RED') {
+                        stroke = '#fca5a5';
+                    } else {
+                        stroke = '#e2e8f0';
+                    }
                     lineWidth = 2;
                 }
 
@@ -1860,6 +2627,36 @@ class RenderEngine {
                 // Unreachable tile dark overlay: 90% black overlay on top of tiles unreachable by the AI bot
                 if (hm && !hm.isBarricade && !hm.botReachable) {
                     this.drawHex(pt.x, pt.y, this.hexRadius - 1, 'rgba(0, 0, 0, 0.9)', stroke, lineWidth);
+                }
+
+                // When both Movement and Visibility overlays are active, draw combined Blue and Red movement outer perimeter lines
+                if (showMoveOverlay && showVisOverlay) {
+                    const inBlue = blueCombinedReach && blueCombinedReach.has(key);
+                    const inRed = redCombinedReach && redCombinedReach.has(key);
+                    if (inBlue || inRed) {
+                        const ax = hexMath.offsetToAxial(col, row);
+                        const blueStroke = 'rgba(137, 180, 249, 0.95)';
+                        const redStroke = 'rgba(245, 143, 143, 0.95)';
+                        for (let d = 0; d < 6; d++) {
+                            let dir = hexMath.hexDirections[d];
+                            const nAx = { q: ax.q + dir.dq, r: ax.r + dir.dr };
+                            const nOff = hexMath.axialToOffset(nAx.q, nAx.r);
+                            let nKey = `${nOff.col},${nOff.row}`;
+                            let segI = (6 - d) % 6;
+
+                            const isBlueBorder = inBlue && !blueCombinedReach.has(nKey);
+                            const isRedBorder = inRed && !redCombinedReach.has(nKey);
+
+                            if (isBlueBorder && isRedBorder) {
+                                this.drawHexSegment(pt.x, pt.y, this.hexRadius - 1, blueStroke, 3.5, segI);
+                                this.drawHexSegment(pt.x, pt.y, this.hexRadius - 4.5, redStroke, 3.5, segI);
+                            } else if (isBlueBorder) {
+                                this.drawHexSegment(pt.x, pt.y, this.hexRadius - 1, blueStroke, 3.5, segI);
+                            } else if (isRedBorder) {
+                                this.drawHexSegment(pt.x, pt.y, this.hexRadius - 1, redStroke, 3.5, segI);
+                            }
+                        }
+                    }
                 }
 
                 // Draw perimeter strokes for reachable zones natively 
@@ -1935,6 +2732,27 @@ class RenderEngine {
                     if (!isCurrentlyAnimating) {
                         baseUnit.isAnimating = false;
                         this.drawUnit(pt.x, pt.y, col, row, baseUnit);
+                    }
+                }
+
+                // Draw Barricade Kill Zone Skull Indicator(s)
+                if (!tile.isBarricade) {
+                    const isBlueKill = killZones.dangerForBlue.has(key);
+                    const isRedKill = killZones.dangerForRed.has(key);
+
+                    if (isBlueKill || isRedKill) {
+                        const skullSize = Math.max(4.5, this.hexRadius * 0.24);
+                        const skullY = baseUnit ? (pt.y + this.hexRadius * 0.56) : pt.y;
+
+                        if (isBlueKill && isRedKill) {
+                            const offsetX = skullSize * 0.95;
+                            this.drawSkullIcon(pt.x - offsetX, skullY, skullSize, 'BLUE');
+                            this.drawSkullIcon(pt.x + offsetX, skullY, skullSize, 'RED');
+                        } else if (isBlueKill) {
+                            this.drawSkullIcon(pt.x, skullY, skullSize, 'BLUE');
+                        } else if (isRedKill) {
+                            this.drawSkullIcon(pt.x, skullY, skullSize, 'RED');
+                        }
                     }
                 }
             }
@@ -2076,13 +2894,23 @@ class UIManager {
         this.render = render;
         if (this.render) this.render.ui = this;
         this.input = input;
+        this.canvas = this.render ? this.render.canvas : document.getElementById('gameCanvas');
 
         this.currentAction = null; // 'MOVE', 'WAITING_MOVE'
+        this.isTimerMuted = false;
 
         this.bindEvents();
-        this.updateHUD();
+        this.bindGame(game);
+    }
 
-        this.isTimerMuted = false;
+    bindGame(game) {
+        this.game = game;
+        this.topPanelInitialized = false;
+        this.historyHasWon = false;
+        this.timeMachineOpen = false;
+        this.showAIHeatmap = false;
+        this.aiHeatmapTeam = null;
+        this.resetActiveState();
 
         this.game.onLog = () => this.refreshLog();
         this.game.onCombat = (c, r, instant = false) => {
@@ -2100,11 +2928,18 @@ class UIManager {
             this.updateHUD();
         };
         this.game.onWinner = (team, reason) => this.showVictory(team, reason);
+
+        this.refreshLog();
+        this.updateHUD();
     }
 
     bindEvents() {
         this.btnEndTurn = document.getElementById('btn-end-turn');
         this.btnEndTurn.addEventListener('click', () => {
+            if (this.game.historyIndex !== this.game.history.length - 1) {
+                this.game.logSystem("Viewing history. Return to Live state to take actions.");
+                return;
+            }
             if (this.game.gameMode === 'ONLINE' && this.game.localTeam !== this.game.activeTeam) return;
             if (this.game.gameMode === 'AI' && this.game.activeTeam === 'RED') return;
             this.game.endTurn();
@@ -2223,10 +3058,20 @@ class UIManager {
             this.updateHUD();
         });
         const btnExitGame = document.getElementById('btn-exit-game');
-        if (btnExitGame) btnExitGame.onclick = () => location.reload();
+        if (btnExitGame) {
+            btnExitGame.onclick = () => {
+                if (window.exitToMenu) window.exitToMenu();
+                else location.reload();
+            };
+        }
 
         const btnRestart = document.getElementById('btn-restart-game');
-        if (btnRestart) btnRestart.onclick = () => { if (window.restartCurrentGame) window.restartCurrentGame(this.game.config); };
+        if (btnRestart) {
+            btnRestart.onclick = () => {
+                if (window.requestGameRestart) window.requestGameRestart(this.game.config);
+                else if (window.restartCurrentGame) window.restartCurrentGame(this.game.config);
+            };
+        }
 
         // Context Menu Elements
         this.contextMenu = document.getElementById('context-menu');
@@ -2484,8 +3329,8 @@ class UIManager {
 
         const bCredits = document.getElementById('blue-credits');
         const rCredits = document.getElementById('red-credits');
-        if (bCredits) bCredits.innerText = this.game.credits['BLUE'];
-        if (rCredits) rCredits.innerText = this.game.credits['RED'];
+        if (bCredits) this.renderCreditDisplay(bCredits, 'BLUE');
+        if (rCredits) this.renderCreditDisplay(rCredits, 'RED');
 
         const goalText = document.getElementById('help-goal-text');
         if (goalText && this.game.config) {
@@ -2532,15 +3377,18 @@ class UIManager {
         const isCurrentPlayerBot = (this.game.gameMode === 'AI' && this.game.activeTeam !== this.game.localTeam);
         skipBtn.style.display = isCurrentPlayerBot ? 'none' : 'block';
 
-        // When playing vs computer, remove the two hexagon (red/blue) buttons on the bot AI's player panel
-        const isRedBot = (this.game.gameMode === 'AI' && (this.game.localTeam === 'BLUE' || !this.game.localTeam));
+        // In AI and Online modes, show overlay toggle buttons only on the local human player's panel
+        const hideRedToggles = (this.game.gameMode === 'AI' && (this.game.localTeam === 'BLUE' || !this.game.localTeam)) ||
+            (this.game.gameMode === 'ONLINE' && this.game.localTeam === 'BLUE');
+        const hideBlueToggles = (this.game.gameMode === 'AI' && this.game.localTeam === 'RED') ||
+            (this.game.gameMode === 'ONLINE' && this.game.localTeam === 'RED');
         const redHexToggleGroup = document.getElementById('red-hex-toggle-group');
         if (redHexToggleGroup) {
-            redHexToggleGroup.style.display = isRedBot ? 'none' : 'flex';
+            redHexToggleGroup.style.display = hideRedToggles ? 'none' : 'flex';
         }
         const blueHexToggleGroup = document.getElementById('blue-hex-toggle-group');
         if (blueHexToggleGroup) {
-            blueHexToggleGroup.style.display = 'flex';
+            blueHexToggleGroup.style.display = hideBlueToggles ? 'none' : 'flex';
         }
 
         if (this.game.winner && !this.historyHasWon) {
@@ -2563,21 +3411,104 @@ class UIManager {
         if (blueAiContainer) blueAiContainer.style.display = isBlueAI ? 'flex' : 'none';
         if (redAiContainer) redAiContainer.style.display = isRedAI ? 'flex' : 'none';
 
+        this.updateTurnStatusIndicators();
+
         if (this.showAIHeatmap) {
             this.updateAIHeatmapForCurrentSnapshot();
         }
         this.updateAIHeatmapUI();
     }
 
+    updateTurnStatusIndicators() {
+        const topLeft = document.getElementById('top-left-turn-status');
+        const topRight = document.getElementById('top-right-turn-status');
+        if (!topLeft || !topRight) return;
+
+        if (this.game.isGameOver || this.game.winner) {
+            topLeft.innerHTML = '';
+            topRight.innerHTML = '';
+            return;
+        }
+
+        const isLocal1v1 = !this.game.gameMode || this.game.gameMode === 'LOCAL';
+        const myTeam = this.game.localTeam || 'BLUE';
+        const activeTeam = this.game.liveActiveTeam || this.game.activeTeam;
+
+        const renderSlot = (el, team) => {
+            if (!isLocal1v1 && team !== myTeam) {
+                el.innerHTML = '';
+                return;
+            }
+
+            const isTurn = (activeTeam === team);
+            const color = team === 'BLUE' ? '#60a5fa' : '#f87171';
+            const glow = team === 'BLUE' ? 'rgba(96, 165, 250, 0.45)' : 'rgba(248, 113, 113, 0.45)';
+
+            if (isTurn) {
+                const playSvg = `<svg width="18" height="18" viewBox="0 0 24 24" fill="${color}" style="flex-shrink: 0; filter: drop-shadow(0 0 6px ${glow});"><polygon points="6,4 20,12 6,20"></polygon></svg>`;
+                el.innerHTML = `<div style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; color: ${color}; font-family: 'Inter', sans-serif; font-size: 1rem; font-weight: 700; letter-spacing: 0.5px; text-shadow: 0 0 8px ${glow};">${playSvg}<span>Your Turn</span></div>`;
+            } else {
+                const clockSvg = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 15.5 14"></polyline></svg>`;
+                el.innerHTML = `<div style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; color: ${color}; font-family: 'Inter', sans-serif; font-size: 1rem; font-weight: 600; letter-spacing: 0.5px; opacity: 0.9;">${clockSvg}<span>Waiting...</span></div>`;
+            }
+        };
+
+        renderSlot(topLeft, 'BLUE');
+        renderSlot(topRight, 'RED');
+    }
+
+    renderCreditDisplay(el, team) {
+        const isLocal1v1 = !this.game.gameMode || this.game.gameMode === 'LOCAL';
+        const myTeam = this.game.localTeam || 'BLUE';
+        const viewerTeam = isLocal1v1 ? null : myTeam;
+        const mineBonus = (this.game && typeof this.game.getMineIncome === 'function')
+            ? this.game.getMineIncome(team, viewerTeam)
+            : 0;
+        const bonusHtml = mineBonus > 0
+            ? `<span style="font-size: 1.25rem; color: #fbbf24; font-weight: 600; margin-left: 6px;">(+${mineBonus})</span>`
+            : '';
+
+        if (isLocal1v1 || team === myTeam) {
+            el.innerHTML = `<span style="display: inline-flex; align-items: baseline; justify-content: center;"><span>${this.game.credits[team]}</span>${bonusHtml}</span>`;
+            el.removeAttribute('title');
+            return;
+        }
+
+        const maxCredits = Math.max(1, (this.game.config && this.game.config.credits) ? this.game.config.credits : 100);
+        const currentCredits = this.game.credits[team];
+        const ratio = currentCredits / maxCredits;
+
+        let coinCount = 1;
+        let label = '< 25% credit available';
+        if (ratio > 0.50) {
+            coinCount = 3;
+            label = '> 50% credit available';
+        } else if (ratio >= 0.25) {
+            coinCount = 2;
+            label = '25% - 50% credit available';
+        }
+
+        el.title = label;
+        const coinSvg = `<svg width="28" height="28" viewBox="0 0 24 24" style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.6));"><circle cx="12" cy="12" r="10" fill="#fbbf24" stroke="#d97706" stroke-width="2"/><circle cx="12" cy="12" r="7" fill="none" stroke="#fde68a" stroke-width="1" stroke-dasharray="2 1"/><text x="12" y="16" text-anchor="middle" font-size="12" font-weight="bold" font-family="Inter, sans-serif" fill="#78350f">$</text></svg>`;
+        el.innerHTML = `<div style="display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 2.5rem;">${coinSvg.repeat(coinCount)}${bonusHtml}</div>`;
+    }
+
     refreshLog() {
         const c = document.getElementById('action-log');
         c.innerHTML = '';
         const limit = Math.max(0, this.game.logs.length - 50);
+        const hideOpponentCost = this.game.gameMode && this.game.gameMode !== 'LOCAL';
+        const myLogType = (this.game.localTeam || 'BLUE') === 'BLUE' ? 'blue' : 'red';
+
         for (let i = limit; i < this.game.logs.length; i++) {
             const l = this.game.logs[i];
             const div = document.createElement('div');
             div.className = `log-entry log-entry-${l.type} ${l.isCombat ? 'log-entry-combat' : ''}`;
-            div.innerText = l.text;
+            let text = l.text;
+            if (hideOpponentCost && (l.type === 'blue' || l.type === 'red') && l.type !== myLogType) {
+                text = text.replace(/ for \d+ cr\./g, '.');
+            }
+            div.innerText = text;
             c.appendChild(div);
         }
         c.scrollTop = c.scrollHeight;
@@ -2620,6 +3551,25 @@ class UIManager {
                 this.resetActiveState();
                 this.updateHUD();
             });
+        } else if (customOpts.isRemoveBarricade) {
+            headerText.innerText = 'Barricade';
+            closeBtn.style.display = 'none';
+
+            this.contextOptions.innerHTML = `
+                <div style="text-align: center; color: #ccc; margin-bottom: 14px; font-size: 0.85rem; line-height: 1.4;">
+                    Use your turn action to destroy this barricade?
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 8px; justify-content: center;">
+                    <button id="btn-barricade-remove" class="btn-action" style="background: rgba(239, 68, 68, 0.25); border-color: rgba(239, 68, 68, 0.6); color: #fca5a5;">Remove Barricade</button>
+                    <button id="btn-barricade-remove-cancel" class="btn-action" style="background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.2); color: #ccc;">Cancel</button>
+                </div>
+            `;
+
+            document.getElementById('btn-barricade-remove').addEventListener('click', customOpts.onConfirm);
+            document.getElementById('btn-barricade-remove-cancel').addEventListener('click', () => {
+                this.resetActiveState();
+                this.updateHUD();
+            });
         } else {
             headerText.innerText = 'Deploy Unit';
             closeBtn.style.display = 'block';
@@ -2638,8 +3588,9 @@ class UIManager {
 
         const rect = this.canvas.getBoundingClientRect();
 
-        const estMaxHeight = customOpts.isBarricade ? 180 : 450;
-        const estMaxWidth = customOpts.isBarricade ? 200 : 270;
+        const isCompactPopup = customOpts.isBarricade || customOpts.isRemoveBarricade;
+        const estMaxHeight = isCompactPopup ? 180 : 450;
+        const estMaxWidth = isCompactPopup ? 210 : 270;
 
         let localX = x - rect.left;
         let localY = y - rect.top;
@@ -2653,6 +3604,33 @@ class UIManager {
         this.contextMenu.style.left = `${safeX}px`;
         this.contextMenu.style.top = `${safeY}px`;
         this.contextMenu.style.transform = 'none';
+    }
+
+    promptRemoveBarricade(col, row, key, e) {
+        if (this.game.config && this.game.config.barricadeRemovable === false) return false;
+        const tile = this.game.getTile(col, row);
+        if (!tile || !tile.isBarricade) return false;
+        if (tile.barricadeTeam !== this.game.activeTeam) return false;
+
+        if (this.game.actionUsed) {
+            this.game.logSystem("You have already used your action this turn.");
+            return true;
+        }
+
+        this.currentAction = 'WAITING_REMOVE_BARRICADE';
+        this.game.selectedTile = key;
+        this.render.hoverHexes = null;
+        this.render.previewBarricade = this.game.getBarricadeGroupKeys(col, row);
+
+        this.openContextMenu(e.clientX, e.clientY, col, row, [], {
+            isRemoveBarricade: true,
+            onConfirm: () => {
+                this.game.removeBarricade(col, row);
+                this.resetActiveState();
+                this.updateHUD();
+            }
+        });
+        return true;
     }
 
     resetActiveState() {
@@ -2682,9 +3660,6 @@ class UIManager {
         if (this.game.gameMode === 'ONLINE' && this.game.activeTeam !== this.game.localTeam) return;
         if (this.game.gameMode === 'AI' && this.game.activeTeam === 'RED') return;
 
-        if (this.game.gameMode === 'ONLINE' && this.game.activeTeam !== this.game.localTeam) return;
-        if (this.game.gameMode === 'AI' && this.game.activeTeam === 'RED') return;
-
         // If we are currently building a path
         if (this.currentAction === 'WAITING_MOVE' && this.game.selectedTile) {
             const s = this.game.selectedTile.split(',');
@@ -2701,7 +3676,12 @@ class UIManager {
         this.resetActiveState();
 
         const tile = this.game.getTile(col, row);
-        if (tile.unit && tile.unit.team === this.game.activeTeam) {
+        if (tile.isBarricade && tile.barricadeTeam === this.game.activeTeam) {
+            if (this.promptRemoveBarricade(col, row, key, e)) {
+                this.updateHUD();
+                return;
+            }
+        } else if (tile.unit && tile.unit.team === this.game.activeTeam) {
             if (this.game.actionUsed) {
                 this.game.logSystem("You have already used your action this turn.");
                 return;
@@ -2833,7 +3813,12 @@ class UIManager {
         this.resetActiveState();
 
         const tile = this.game.getTile(col, row);
-        if (tile.unit && tile.unit.team === this.game.activeTeam) {
+        if (tile.isBarricade && tile.barricadeTeam === this.game.activeTeam) {
+            if (this.promptRemoveBarricade(col, row, key, e)) {
+                this.updateHUD();
+                return;
+            }
+        } else if (tile.unit && tile.unit.team === this.game.activeTeam) {
             if (this.game.actionUsed) {
                 this.game.logSystem("You have already used your action this turn.");
                 return;
@@ -2928,23 +3913,29 @@ class UIManager {
 
         document.getElementById('victory-reason').innerText = reason;
 
-        document.getElementById('btn-play-again').onclick = () => location.reload();
+        document.getElementById('btn-play-again').onclick = () => {
+            if (window.exitToMenu) window.exitToMenu();
+            else location.reload();
+        };
 
         const btnExitGame = document.getElementById('btn-exit-game');
-        if (btnExitGame) btnExitGame.onclick = () => location.reload();
+        if (btnExitGame) {
+            btnExitGame.onclick = () => {
+                if (window.exitToMenu) window.exitToMenu();
+                else location.reload();
+            };
+        }
 
         const btnRestart = document.getElementById('btn-victory-restart');
-        if (this.game.gameMode === 'ONLINE' && this.network && !this.network.isHost) {
-            if (btnRestart) btnRestart.style.display = 'none';
-        } else {
-            if (btnRestart) {
-                btnRestart.style.display = 'block';
-                btnRestart.onclick = () => {
-                    if (window.restartCurrentGame) {
-                        window.restartCurrentGame(this.game.config);
-                    }
-                };
-            }
+        if (btnRestart) {
+            btnRestart.style.display = 'block';
+            btnRestart.onclick = () => {
+                if (window.requestGameRestart) {
+                    window.requestGameRestart(this.game.config);
+                } else if (window.restartCurrentGame) {
+                    window.restartCurrentGame(this.game.config);
+                }
+            };
         }
 
         document.getElementById('btn-review-game').onclick = () => {
@@ -3474,22 +4465,47 @@ class UIManager {
 // --- network.js ---
 // js/network.js
 class NetworkManager {
-    constructor(hostId = null, guestName = 'Guest') {
+    constructor(hostId = null, guestName = 'Guest', options = {}) {
         this.peer = null;
         this.conn = null;
-        this.isHost = !hostId;
+        this.isHost = options.isHost !== undefined ? options.isHost : !hostId;
+        this.hostId = hostId || null;
+        this.isReconnect = !!options.isReconnect;
         this.connected = false;
         this.guestName = guestName;
+        this.intentionalDisconnect = false;
+        this.hasCompletedInitialHandshake = !!options.isReconnect;
 
         // These will be bound after game setup
         this.ui = null;
         this.game = null;
 
-        if (hostId) {
-            this.joinGame(hostId);
+        // Fault-tolerant turn handoff & reconnect state
+        this.pendingTurn = null;
+        this.retryInterval = null;
+        this.heartbeatInterval = null;
+        this.reconnectTimeout = null;
+        this.hostIdRetryCount = 0;
+
+        if (!this.isHost && this.hostId && !options.deferConnect) {
+            this.joinGame(this.hostId, this.isReconnect);
         }
 
         this.bindPopupListeners();
+        this.bindBeforeUnload();
+    }
+
+    bindBeforeUnload() {
+        if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+            window.addEventListener('beforeunload', () => {
+                if (!this.intentionalDisconnect && this.game && typeof this.game.saveSessionToStorage === 'function') {
+                    this.game.saveSessionToStorage();
+                }
+                if (this.peer && !this.peer.destroyed) {
+                    try { this.peer.destroy(); } catch (e) {}
+                }
+            });
+        }
     }
 
     bindPopupListeners() {
@@ -3508,17 +4524,69 @@ class NetworkManager {
     bindEngines(game, ui) {
         this.game = game;
         this.ui = ui;
+        this.pendingTurn = null;
+        if (!this.game) return;
+
         this.game.localTeam = this.isHost ? 'BLUE' : 'RED';
         if (this.isHost) {
-            this.game.logSystem("Waiting for Opponent to connect to the Host Link...");
+            if (!this.connected && !this.isReconnect) {
+                this.game.logSystem("Waiting for Opponent to connect to the Host Link...");
+            }
         } else {
-            this.game.logSystem(`Connected as Guest. You are RED.`);
-            document.getElementById('online-modal').classList.add('hidden');
+            if (!this.isReconnect) {
+                this.game.logSystem(`Connected as Guest. You are RED.`);
+            }
+            const modal = document.getElementById('online-modal');
+            if (modal) modal.classList.add('hidden');
+        }
+
+        if (this.connected) {
+            this.startSyncLoops();
         }
     }
 
-    hostGame() {
-        const peerConfig = {
+    startSyncLoops() {
+        this.stopSyncLoops();
+
+        // Persistent retry loop for unacknowledged turn handoffs
+        this.retryInterval = setInterval(() => {
+            if (!this.connected || !this.conn || !this.game) return;
+            if (this.pendingTurn) {
+                const now = Date.now();
+                if (now - this.pendingTurn.lastSentAt >= 1000) {
+                    this.pendingTurn.lastSentAt = now;
+                    this.pendingTurn.retries++;
+                    this.sendData(this.pendingTurn.payload);
+                }
+            }
+        }, 400);
+
+        // Continuous state heartbeat watchdog to prevent split-brain / turn limbo
+        this.heartbeatInterval = setInterval(() => {
+            if (!this.connected || !this.conn || !this.game) return;
+            const liveTurnId = this.game.history.length - 1;
+            this.sendData({
+                type: 'STATE_HEARTBEAT',
+                turnId: liveTurnId,
+                activeTeam: this.game.liveActiveTeam,
+                winner: this.game.winner || null
+            });
+        }, 2000);
+    }
+
+    stopSyncLoops() {
+        if (this.retryInterval) {
+            clearInterval(this.retryInterval);
+            this.retryInterval = null;
+        }
+        if (this.heartbeatInterval) {
+            clearInterval(this.heartbeatInterval);
+            this.heartbeatInterval = null;
+        }
+    }
+
+    getPeerConfig() {
+        return {
             config: {
                 'iceServers': [
                     { 'urls': 'stun:stun.l.google.com:19302' },
@@ -3529,29 +4597,52 @@ class NetworkManager {
                 ]
             }
         };
-        this.peer = new Peer(peerConfig);
-        this.peer.on('open', (id) => {
-            const link = `${window.location.origin}${window.location.pathname}?host=${id}`;
-            document.getElementById('host-link-input').value = link;
+    }
 
-            const pName = document.getElementById('player-name').value || 'Host';
-            fetch('/api/lobby', {
-                method: 'POST',
-                body: JSON.stringify({ hostId: id, name: pName }),
-                headers: { 'Content-Type': 'application/json' }
-            }).catch(console.error);
+    hostGame(preferredHostId = null, isReconnect = false) {
+        if (preferredHostId) this.hostId = preferredHostId;
+        if (isReconnect) {
+            this.isReconnect = true;
+            this.hasCompletedInitialHandshake = true;
+        }
+
+        const peerConfig = this.getPeerConfig();
+        this.peer = this.hostId ? new Peer(this.hostId, peerConfig) : new Peer(peerConfig);
+
+        this.peer.on('open', (id) => {
+            this.hostId = id;
+            this.hostIdRetryCount = 0;
+
+            const link = `${window.location.origin}${window.location.pathname}?host=${id}`;
+            const linkInput = document.getElementById('host-link-input');
+            if (linkInput) linkInput.value = link;
+
+            if (this.game && typeof this.game.saveSessionToStorage === 'function') {
+                this.game.saveSessionToStorage();
+            }
+
+            if (!this.isReconnect && (!this.game || this.game.history.length <= 1)) {
+                const nameEl = document.getElementById('player-name');
+                const pName = (nameEl && nameEl.value) ? nameEl.value : (this.game ? this.game.blueName : 'Host');
+                fetch('/api/lobby', {
+                    method: 'POST',
+                    body: JSON.stringify({ hostId: id, name: pName }),
+                    headers: { 'Content-Type': 'application/json' }
+                }).catch(console.error);
+            }
         });
 
         this.peer.on('connection', (conn) => {
-            if (this.conn) {
-                conn.close(); // Only 1 guest
-                return;
+            if (this.conn && this.conn !== conn) {
+                this.conn._superseded = true;
+                try { this.conn.close(); } catch (e) {}
             }
             this.conn = conn;
             this.setupConnection();
 
-            document.getElementById('online-modal').classList.add('hidden');
-            if (this.game) {
+            const modal = document.getElementById('online-modal');
+            if (modal) modal.classList.add('hidden');
+            if (this.game && !this.hasCompletedInitialHandshake) {
                 this.game.logSystem("Opponent Connected! Initializing Channel...");
             }
             if (this.ui) this.ui.updateHUD();
@@ -3559,45 +4650,111 @@ class NetworkManager {
 
         this.peer.on('error', (err) => {
             console.error(err);
+            if (err && err.type === 'unavailable-id' && this.hostId && this.hostIdRetryCount < 10) {
+                this.hostIdRetryCount++;
+                try { this.peer.destroy(); } catch (e) {}
+                setTimeout(() => {
+                    if (!this.intentionalDisconnect) {
+                        this.hostGame(this.hostId, this.isReconnect);
+                    }
+                }, 1000);
+                return;
+            }
             if (this.game) this.game.logSystem("Network Error: " + err.message);
         });
     }
 
-    joinGame(hostId) {
-        const peerConfig = {
-            config: {
-                'iceServers': [
-                    { 'urls': 'stun:stun.l.google.com:19302' },
-                    { 'urls': 'stun:stun1.l.google.com:19302' },
-                    { 'urls': 'stun:stun2.l.google.com:19302' },
-                    { 'urls': 'stun:stun3.l.google.com:19302' },
-                    { 'urls': 'stun:stun4.l.google.com:19302' }
-                ]
+    joinGame(hostId, isReconnect = false) {
+        if (hostId) this.hostId = hostId;
+        if (isReconnect) {
+            this.isReconnect = true;
+            this.hasCompletedInitialHandshake = true;
+        }
+
+        if (this.peer && !this.peer.destroyed && this.peer.open) {
+            if (this.conn) {
+                this.conn._superseded = true;
+                try { this.conn.close(); } catch (e) {}
             }
-        };
+            this.conn = this.peer.connect(this.hostId, { reliable: true });
+            this.setupConnection();
+            return;
+        }
+
+        const peerConfig = this.getPeerConfig();
+        if (this.peer && !this.peer.destroyed) {
+            try { this.peer.destroy(); } catch (e) {}
+        }
         this.peer = new Peer(peerConfig);
-        this.peer.on('open', (id) => {
-            this.conn = this.peer.connect(hostId, { reliable: true });
+        this.peer.on('open', () => {
+            this.conn = this.peer.connect(this.hostId, { reliable: true });
             this.setupConnection();
         });
 
         this.peer.on('error', (err) => {
             console.error(err);
-            if (this.game) this.game.logSystem("Network Error: " + err.message);
+            if (!this.intentionalDisconnect) {
+                this.scheduleGuestReconnect();
+            }
         });
     }
 
+    scheduleGuestReconnect() {
+        if (this.intentionalDisconnect || this.isHost || !this.hostId) return;
+        if (this.reconnectTimeout) return;
+        this.reconnectTimeout = setTimeout(() => {
+            this.reconnectTimeout = null;
+            if (!this.connected && !this.intentionalDisconnect) {
+                this.joinGame(this.hostId, true);
+            }
+        }, 1500);
+    }
+
     setupConnection() {
+        const currentConn = this.conn;
+        if (!currentConn) return;
+
         const handleOpen = () => {
+            if (this.conn !== currentConn) return;
             this.connected = true;
+            if (this.reconnectTimeout) {
+                clearTimeout(this.reconnectTimeout);
+                this.reconnectTimeout = null;
+            }
+            this.startSyncLoops();
 
             // WebRTC data channels (especially on Firefox) can drop initial payloads if sent immediately
             setTimeout(() => {
+                if (this.conn !== currentConn || !this.connected) return;
+
+                if (this.hasCompletedInitialHandshake && this.game) {
+                    this.sendData({
+                        type: 'RECONNECT_HELLO',
+                        turnId: this.game.history.length - 1,
+                        snapshot: this.game.serializeSnapshot(),
+                        history: this.game.serializeFullHistory(),
+                        blueName: this.game.blueName,
+                        redName: this.game.redName,
+                        config: this.game.config
+                    });
+                    this.game.logSystem("Reconnected to opponent!");
+                    if (this.game.timerDuration > 0 && !this.game.winner && !this.game.timerInterval) {
+                        this.game.startTimer();
+                    }
+                    this.game.saveSessionToStorage();
+                    if (this.ui) this.ui.updateHUD();
+                    return;
+                }
+
+                this.hasCompletedInitialHandshake = true;
                 if (this.isHost && this.game) {
                     // Host sends config to guest
                     this.sendData({
                         type: 'CONFIG',
-                        config: this.game.config
+                        config: this.game.config,
+                        hostId: this.hostId,
+                        turnId: this.game.history.length - 1,
+                        history: this.game.serializeFullHistory()
                     });
 
                     // Remove game from open lobbies
@@ -3613,6 +4770,7 @@ class NetworkManager {
                         this.game.startTimer();
                     }
                     this.game.logSystem("Game Start! You are BLUE.");
+                    this.game.saveSessionToStorage();
                 } else {
                     this.sendData({
                         type: 'GUEST_JOIN',
@@ -3620,23 +4778,72 @@ class NetworkManager {
                     });
                 }
                 if (this.ui) this.ui.updateHUD();
-            }, 500); // 500ms stabilization delay
+            }, 400);
         };
 
-        if (this.conn.open) {
+        if (currentConn.open) {
             handleOpen();
         } else {
-            this.conn.on('open', handleOpen);
+            currentConn.on('open', handleOpen);
         }
 
-        this.conn.on('data', (data) => {
+        currentConn.on('data', (data) => {
+            if (this.conn !== currentConn) return;
             this.receiveData(data);
         });
 
-        this.conn.on('close', () => {
+        currentConn.on('close', () => {
+            if (currentConn._superseded) return;
             this.connected = false;
-            if (this.game) this.game.logSystem("Opponent Disconnected!");
+            this.stopSyncLoops();
+            if (this.intentionalDisconnect) return;
+
+            if (this.game) {
+                this.game.logSystem("Connection interrupted. Waiting for opponent to reconnect...");
+            }
+            if (!this.isHost) {
+                this.scheduleGuestReconnect();
+            }
         });
+    }
+
+    triggerNetworkRestart(overrideConfig = null) {
+        const baseConfig = overrideConfig || (this.game ? this.game.config : null);
+        if (!baseConfig) return;
+
+        const restartConfig = {
+            ...baseConfig,
+            blueName: this.game ? this.game.blueName : (baseConfig.blueName || 'Player 1'),
+            redName: this.game ? this.game.redName : (baseConfig.redName || 'Player 2')
+        };
+
+        this.pendingTurn = null;
+        if (window.restartCurrentGame) {
+            window.restartCurrentGame(restartConfig, true);
+        }
+        this.sendData({
+            type: 'RESTART_GAME',
+            config: restartConfig
+        });
+    }
+
+    leaveGame() {
+        this.intentionalDisconnect = true;
+        this.pendingTurn = null;
+        if (this.reconnectTimeout) {
+            clearTimeout(this.reconnectTimeout);
+            this.reconnectTimeout = null;
+        }
+        this.stopSyncLoops();
+        if (this.connected && this.conn) {
+            try {
+                this.conn.send({ type: 'PEER_LEFT_GAME' });
+                this.conn.close();
+            } catch (e) {}
+        }
+        if (this.peer && !this.peer.destroyed) {
+            try { this.peer.destroy(); } catch (e) {}
+        }
     }
 
     sendData(payload) {
@@ -3645,39 +4852,323 @@ class NetworkManager {
         }
     }
 
+    recordAndSendTurn(action) {
+        if (!this.game) return;
+        const turnId = this.game.history.length - 1;
+        const snapshot = this.game.serializeSnapshot(turnId);
+        const payload = {
+            type: 'TURN_ACTION',
+            turnId,
+            senderTeam: this.game.localTeam,
+            action,
+            snapshot
+        };
+        this.pendingTurn = {
+            turnId,
+            payload,
+            lastSentAt: Date.now(),
+            retries: 0
+        };
+        this.sendData(payload);
+    }
+
+    sendTurnAck() {
+        if (!this.game) return;
+        this.sendData({
+            type: 'TURN_ACK',
+            turnId: this.game.history.length - 1,
+            activeTeam: this.game.liveActiveTeam
+        });
+    }
+
+    executeRemoteAction(action) {
+        if (!this.game || !action) return false;
+        if (action.type === 'DEPLOY') {
+            return this.game.deployUnit(action.team, action.unitType, action.str, action.spd, action.col, action.row, true);
+        } else if (action.type === 'MOVE') {
+            return this.game.moveUnit(action.col, action.row, action.tC, action.tR, true);
+        } else if (action.type === 'BARRICADE') {
+            return this.game.createBarricade(action.col, action.row, action.offset, true);
+        } else if (action.type === 'REMOVE_BARRICADE') {
+            return this.game.removeBarricade(action.col, action.row, true);
+        } else if (action.type === 'SKIP') {
+            return this.game.endTurn(true);
+        }
+        return false;
+    }
+
     receiveData(data) {
+        if (!data || !data.type) return;
+
+        if (data.type === 'PEER_LEFT_GAME') {
+            this.intentionalDisconnect = true;
+            this.stopSyncLoops();
+            if (this.game) {
+                this.game.logSystem("Opponent left the game.");
+            }
+            return;
+        }
+
+        if (data.type === 'RESTART_GAME') {
+            this.pendingTurn = null;
+            if (data.config && window.restartCurrentGame) {
+                window.restartCurrentGame(data.config, true);
+                if (this.game) {
+                    this.game.logSystem("Game restarted!");
+                }
+                this.sendTurnAck();
+            }
+            return;
+        }
+
         if (data.type === 'CONFIG') {
-            if (!this.isHost && window.onReceiveNetworkConfig) {
-                window.onReceiveNetworkConfig(data.config);
+            if (data.hostId) this.hostId = data.hostId;
+            if (!this.isHost) {
+                if (this.game && this.isReconnect) {
+                    // Guest already restored game from sessionStorage; sync any newer history
+                    if (Array.isArray(data.history) && data.history.length > this.game.history.length) {
+                        this.game.ensureLiveState();
+                        this.game.applyRemoteHistory(data.history);
+                    }
+                    if (this.ui) this.ui.updateHUD();
+                    this.sendTurnAck();
+                } else if (window.onReceiveNetworkConfig) {
+                    window.onReceiveNetworkConfig(data.config, data.history);
+                }
             }
             return;
         }
 
         if (data.type === 'GUEST_JOIN' && this.isHost && this.game) {
             this.game.redName = data.name;
+            if (this.game.config) this.game.config.redName = data.name;
+            this.game.saveSessionToStorage();
             if (this.ui) this.ui.updateHUD();
             return;
         }
 
-        if (!this.game || !this.ui) return;
+        if (data.type === 'RECONNECT_HELLO') {
+            if (!this.game && !this.isHost && data.config && window.onReceiveNetworkConfig) {
+                window.onReceiveNetworkConfig(data.config, data.history);
+                return;
+            }
+            if (!this.game) return;
 
-        if (data.type === 'DEPLOY') {
-            this.game.deployUnit(data.team, data.unitType, data.str, data.spd, data.col, data.row, true);
-        } else if (data.type === 'MOVE') {
-            this.game.moveUnit(data.col, data.row, data.tC, data.tR, true);
-        } else if (data.type === 'BARRICADE') {
-            this.game.createBarricade(data.col, data.row, data.offset, true);
+            if (data.blueName) {
+                this.game.blueName = data.blueName;
+                if (this.game.config) this.game.config.blueName = data.blueName;
+            }
+            if (data.redName && data.redName !== 'Player 2') {
+                this.game.redName = data.redName;
+                if (this.game.config) this.game.config.redName = data.redName;
+            }
+
+            const localTurnId = this.game.history.length - 1;
+            if (typeof data.turnId === 'number') {
+                if (data.turnId > localTurnId) {
+                    this.game.ensureLiveState();
+                    if (Array.isArray(data.history) && data.history.length > 0) {
+                        this.game.applyRemoteHistory(data.history);
+                    } else if (data.snapshot) {
+                        this.game.applyRemoteSnapshot(data.snapshot);
+                    }
+                    this.sendTurnAck();
+                } else if (data.turnId < localTurnId) {
+                    this.sendData({
+                        type: 'STATE_SYNC',
+                        turnId: localTurnId,
+                        snapshot: this.game.serializeSnapshot(localTurnId),
+                        history: this.game.serializeFullHistory()
+                    });
+                } else {
+                    if (data.snapshot && !this.game.doesLiveStateMatch(data.snapshot)) {
+                        if (this.isHost) {
+                            this.sendData({
+                                type: 'STATE_SYNC',
+                                turnId: localTurnId,
+                                snapshot: this.game.serializeSnapshot(localTurnId),
+                                history: this.game.serializeFullHistory()
+                            });
+                        } else {
+                            this.game.ensureLiveState();
+                            this.game.applyRemoteSnapshot(data.snapshot);
+                        }
+                    }
+                    this.sendTurnAck();
+                }
+            }
+            this.game.saveSessionToStorage();
+            if (this.ui) this.ui.updateHUD();
+            return;
         }
 
-        // Notice endTurn implies a SKIP, but moveUnit/deployUnit internally call endTurn if actionUsed!
-        // We only explicitly call endTurn if the remote player forcefully skipped.
-        if (data.type === 'SKIP') {
-            this.game.endTurn(true);
+        if (!this.game) return;
+
+        if (data.type === 'TURN_ACK') {
+            if (this.pendingTurn && typeof data.turnId === 'number' && data.turnId >= this.pendingTurn.turnId) {
+                this.pendingTurn = null;
+            }
+            const localTurnId = this.game.history.length - 1;
+            if (data.turnId === localTurnId && data.activeTeam && data.activeTeam !== this.game.liveActiveTeam) {
+                this.sendData({
+                    type: 'STATE_SYNC',
+                    turnId: localTurnId,
+                    snapshot: this.game.serializeSnapshot(localTurnId),
+                    history: this.game.serializeFullHistory()
+                });
+            }
+            return;
         }
 
-        this.ui.updateHUD();
+        if (data.type === 'TURN_ACTION') {
+            const localTurnId = this.game.history.length - 1;
+
+            // If we also had an older pendingTurn that is now superseded, clear it
+            if (this.pendingTurn && data.turnId > this.pendingTurn.turnId) {
+                this.pendingTurn = null;
+            }
+
+            if (data.turnId < localTurnId) {
+                // Already processed an even newer turn; simply ACK current turn
+                this.sendTurnAck();
+                return;
+            }
+
+            if (data.turnId === localTurnId) {
+                // Duplicate retry of the current turn; verify state matches and re-ACK
+                if (data.snapshot && !this.game.doesLiveStateMatch(data.snapshot)) {
+                    const wasInHistory = this.game.ensureLiveState();
+                    if (wasInHistory) {
+                        this.game.logSystem("Opponent completed their turn — returned to LIVE state.");
+                    }
+                    this.game.applyRemoteSnapshot(data.snapshot);
+                    if (this.ui) this.ui.updateHUD();
+                }
+                this.sendTurnAck();
+                return;
+            }
+
+            // data.turnId > localTurnId: This is a new turn from the opponent!
+            const wasInHistory = this.game.ensureLiveState();
+            if (wasInHistory) {
+                this.game.logSystem("Opponent completed their turn — returned to LIVE state.");
+            }
+
+            if (data.turnId === localTurnId + 1 && data.action) {
+                this.executeRemoteAction(data.action);
+            }
+
+            // Authoritative post-action verification & fallback sync
+            if (data.snapshot && !this.game.doesLiveStateMatch(data.snapshot)) {
+                this.game.applyRemoteSnapshot(data.snapshot);
+            }
+
+            if (this.ui) this.ui.updateHUD();
+            this.sendTurnAck();
+            return;
+        }
+
+        if (data.type === 'STATE_HEARTBEAT') {
+            const localTurnId = this.game.history.length - 1;
+            const localActive = this.game.liveActiveTeam;
+
+            if (this.pendingTurn && data.turnId >= this.pendingTurn.turnId && data.activeTeam === localActive) {
+                this.pendingTurn = null;
+            }
+
+            if (localTurnId > data.turnId) {
+                // Remote peer missed a turn handoff; push the turn or state immediately
+                if (this.pendingTurn && this.pendingTurn.turnId === localTurnId) {
+                    this.sendData(this.pendingTurn.payload);
+                } else {
+                    this.sendData({
+                        type: 'STATE_SYNC',
+                        turnId: localTurnId,
+                        snapshot: this.game.serializeSnapshot(localTurnId),
+                        history: this.game.serializeFullHistory()
+                    });
+                }
+            } else if (localTurnId < data.turnId) {
+                // We missed a turn handoff; request immediate sync from remote peer
+                this.sendData({
+                    type: 'STATE_REQUEST',
+                    currentTurnId: localTurnId
+                });
+            } else if (localTurnId === data.turnId && data.activeTeam && data.activeTeam !== localActive) {
+                // Split-brain on the same turnId: Host acts as authoritative tie-breaker
+                if (this.isHost) {
+                    this.sendData({
+                        type: 'STATE_SYNC',
+                        turnId: localTurnId,
+                        snapshot: this.game.serializeSnapshot(localTurnId),
+                        history: this.game.serializeFullHistory()
+                    });
+                } else {
+                    this.sendData({
+                        type: 'STATE_REQUEST',
+                        currentTurnId: localTurnId
+                    });
+                }
+            }
+            return;
+        }
+
+        if (data.type === 'STATE_REQUEST') {
+            const localTurnId = this.game.history.length - 1;
+            if (this.pendingTurn && this.pendingTurn.turnId === localTurnId) {
+                this.sendData(this.pendingTurn.payload);
+            } else {
+                this.sendData({
+                    type: 'STATE_SYNC',
+                    turnId: localTurnId,
+                    snapshot: this.game.serializeSnapshot(localTurnId),
+                    history: this.game.serializeFullHistory()
+                });
+            }
+            return;
+        }
+
+        if (data.type === 'STATE_SYNC') {
+            if (Array.isArray(data.history) && data.history.length > this.game.history.length) {
+                const wasInHistory = this.game.ensureLiveState();
+                if (wasInHistory) {
+                    this.game.logSystem("Opponent completed their turn — returned to LIVE state.");
+                }
+                this.game.applyRemoteHistory(data.history);
+                if (this.ui) this.ui.updateHUD();
+                this.sendTurnAck();
+                return;
+            }
+            if (data.snapshot) {
+                const localTurnId = this.game.history.length - 1;
+                if (data.turnId > localTurnId || !this.game.doesLiveStateMatch(data.snapshot)) {
+                    const wasInHistory = this.game.ensureLiveState();
+                    if (wasInHistory) {
+                        this.game.logSystem("Opponent completed their turn — returned to LIVE state.");
+                    }
+                    this.game.applyRemoteSnapshot(data.snapshot);
+                    if (this.ui) this.ui.updateHUD();
+                }
+                this.sendTurnAck();
+            }
+            return;
+        }
+
+        // Legacy fallback for raw action payloads
+        const wasInHistory = this.game.ensureLiveState();
+        if (wasInHistory) {
+            this.game.logSystem("Opponent completed their turn — returned to LIVE state.");
+        }
+
+        if (data.type === 'DEPLOY' || data.type === 'MOVE' || data.type === 'BARRICADE' || data.type === 'SKIP') {
+            this.executeRemoteAction(data);
+        }
+
+        if (this.ui) this.ui.updateHUD();
+        this.sendTurnAck();
     }
 }
+
 
 
 // --- genes-v3.js ---
@@ -4581,6 +6072,7 @@ class AIBotV3 {
 
 
 
+
  // New Influence Map AI
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -4594,11 +6086,108 @@ document.addEventListener('DOMContentLoaded', () => {
     let GLOBAL_AI = null;
     let GLOBAL_MODE = 'LOCAL';
 
+    window.exitToMenu = () => {
+        try {
+            sessionStorage.removeItem('TPOW_ACTIVE_SESSION');
+        } catch (e) {}
+        if (GLOBAL_NETWORK) {
+            GLOBAL_NETWORK.leaveGame();
+            GLOBAL_NETWORK = null;
+        }
+        window.location.href = window.location.origin + window.location.pathname;
+    };
+
+    window.requestGameRestart = (cfg = null) => {
+        const targetCfg = cfg || (window.gameAPI && window.gameAPI.game ? window.gameAPI.game.config : null);
+        if (GLOBAL_MODE === 'ONLINE' && GLOBAL_NETWORK && GLOBAL_NETWORK.connected) {
+            GLOBAL_NETWORK.triggerNetworkRestart(targetCfg);
+        } else {
+            launchGame(targetCfg);
+        }
+    };
+
+    // Check for active session in sessionStorage (for browser refresh persistence)
+    let savedSession = null;
+    try {
+        const raw = sessionStorage.getItem('TPOW_ACTIVE_SESSION');
+        if (raw) {
+            savedSession = JSON.parse(raw);
+        }
+    } catch (e) {
+        savedSession = null;
+    }
+
     // 1. Check for immediate Guest Invite overrides
     const urlParams = new URLSearchParams(window.location.search);
     const guestHostId = urlParams.get('host');
 
-    if (guestHostId) {
+    // If URL has a DIFFERENT hostId than our saved session, treat as a brand new invite link
+    if (guestHostId && savedSession && (!savedSession.networkInfo || savedSession.networkInfo.hostId !== guestHostId)) {
+        try {
+            sessionStorage.removeItem('TPOW_ACTIVE_SESSION');
+        } catch (e) {}
+        savedSession = null;
+    }
+
+    if (savedSession && savedSession.config) {
+        // Restore active game after browser refresh!
+        mainMenu.classList.add('hidden');
+        configModal.classList.add('hidden');
+        onlineModal.classList.add('hidden');
+        uiLayer.classList.remove('hidden');
+
+        GLOBAL_MODE = savedSession.gameMode || 'LOCAL';
+
+        if (GLOBAL_MODE === 'ONLINE' && savedSession.networkInfo) {
+            const netInfo = savedSession.networkInfo;
+            window.onReceiveNetworkConfig = (remoteConfig, remoteHistory) => {
+                document.getElementById('victory-modal').classList.add('hidden');
+                onlineModal.classList.add('hidden');
+                uiLayer.classList.remove('hidden');
+                launchGame(remoteConfig, true);
+                if (Array.isArray(remoteHistory) && remoteHistory.length > 0 && window.gameAPI && window.gameAPI.game) {
+                    window.gameAPI.game.applyRemoteHistory(remoteHistory);
+                }
+            };
+
+            if (netInfo.isHost) {
+                GLOBAL_NETWORK = new NetworkManager(netInfo.hostId, netInfo.guestName || 'Guest', {
+                    isHost: true,
+                    isReconnect: true,
+                    deferConnect: true
+                });
+                launchGame(savedSession.config, true, savedSession);
+                if (netInfo.hostId) {
+                    GLOBAL_NETWORK.hostGame(netInfo.hostId, true);
+                    if (window.gameAPI && window.gameAPI.game) {
+                        window.gameAPI.game.logSystem("Session restored after refresh. Reconnecting channel...");
+                    }
+                } else {
+                    onlineModal.classList.remove('hidden');
+                    GLOBAL_NETWORK.hostGame();
+                }
+            } else {
+                const guestName = netInfo.guestName || savedSession.redName || 'Guest';
+                GLOBAL_NETWORK = new NetworkManager(netInfo.hostId, guestName, {
+                    isHost: false,
+                    isReconnect: true,
+                    deferConnect: true
+                });
+                launchGame(savedSession.config, true, savedSession);
+                if (netInfo.hostId) {
+                    GLOBAL_NETWORK.joinGame(netInfo.hostId, true);
+                    if (window.gameAPI && window.gameAPI.game) {
+                        window.gameAPI.game.logSystem("Session restored after refresh. Reconnecting to Host...");
+                    }
+                }
+            }
+        } else {
+            launchGame(savedSession.config, true, savedSession);
+            if (window.gameAPI && window.gameAPI.game) {
+                window.gameAPI.game.logSystem("Game restored after page refresh.");
+            }
+        }
+    } else if (guestHostId) {
         mainMenu.classList.add('hidden');
         configModal.classList.add('hidden');
 
@@ -4608,16 +6197,20 @@ document.addEventListener('DOMContentLoaded', () => {
         if (mContent) mContent.innerHTML = '<h2>Connecting...</h2><p>Waiting for Host Rules...</p>';
 
         GLOBAL_MODE = 'ONLINE';
-        GLOBAL_NETWORK = new NetworkManager(guestHostId);
+        const myName = document.getElementById('player-name').value || 'Guest';
+        GLOBAL_NETWORK = new NetworkManager(guestHostId, myName);
 
         // Wait for config from network instead of launching immediately
-        window.onReceiveNetworkConfig = (remoteConfig) => {
+        window.onReceiveNetworkConfig = (remoteConfig, remoteHistory) => {
+            document.getElementById('victory-modal').classList.add('hidden');
             onlineModal.classList.add('hidden');
             uiLayer.classList.remove('hidden');
-            launchGame(remoteConfig);
-            if (GLOBAL_NETWORK) {
-                GLOBAL_NETWORK.bindEngines(GLOBAL_GAME, GLOBAL_UI);
-                if (GLOBAL_NETWORK.ui) GLOBAL_NETWORK.ui.updateHUD();
+            if (myName && myName !== 'Guest') {
+                remoteConfig.redName = myName;
+            }
+            launchGame(remoteConfig, true);
+            if (Array.isArray(remoteHistory) && remoteHistory.length > 1 && window.gameAPI && window.gameAPI.game) {
+                window.gameAPI.game.applyRemoteHistory(remoteHistory);
             }
         };
     } else {
@@ -4677,19 +6270,21 @@ document.addEventListener('DOMContentLoaded', () => {
                         const myName = document.getElementById('player-name').value || 'Guest';
                         GLOBAL_NETWORK = new NetworkManager(game.hostId, myName);
 
-                        window.onReceiveNetworkConfig = (remoteConfig) => {
+                        window.onReceiveNetworkConfig = (remoteConfig, remoteHistory) => {
                             document.getElementById('victory-modal').classList.add('hidden');
                             document.getElementById('online-modal').classList.add('hidden');
                             uiLayer.classList.remove('hidden');
                             remoteConfig.redName = myName;
-                            // Engine internally maps NetworkManager when GLOBAL_NETWORK is provided
-                            launchGame(remoteConfig);
+                            launchGame(remoteConfig, true);
+                            if (Array.isArray(remoteHistory) && remoteHistory.length > 1 && window.gameAPI && window.gameAPI.game) {
+                                window.gameAPI.game.applyRemoteHistory(remoteHistory);
+                            }
                         };
                     };
                     lobbyList.appendChild(div);
                 });
             })
-            .catch(err => {
+            .catch(() => {
                 lobbyList.innerHTML = '<p style="color: #ef4444; text-align: center;">Failed to load lobby list.</p>';
             });
     }
@@ -4734,12 +6329,18 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     window.restartCurrentGame = launchGame;
-    function launchGame(overrideConfig = null) {
+    function launchGame(overrideConfig = null, isRemoteOrRestored = false, restoredSession = null) {
         document.getElementById('victory-modal').classList.add('hidden');
-        let config;
 
+        // Clean up previous game timer if restarting in place
+        if (window.gameAPI && window.gameAPI.game && window.gameAPI.game.timerInterval) {
+            clearInterval(window.gameAPI.game.timerInterval);
+            window.gameAPI.game.timerInterval = null;
+        }
+
+        let config;
         if (overrideConfig) {
-            config = overrideConfig;
+            config = { ...overrideConfig };
         } else {
             // Read configs (or use defaults if bypassed by Online guest)
             let boardW = 30;
@@ -4756,15 +6357,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
+            const remChk = document.getElementById('cfg-barricadeRemovable');
+            const kzChk = document.getElementById('cfg-barricadeKillZone');
+            const numMinesEl = document.getElementById('cfg-numMines');
+            const mineCreditEl = document.getElementById('cfg-mineCredit');
+            const parsedNumMines = (numMinesEl && numMinesEl.value !== '') ? parseInt(numMinesEl.value, 10) : 2;
+            const parsedMineCredit = (mineCreditEl && mineCreditEl.value !== '') ? parseInt(mineCreditEl.value, 10) : 5;
+
             config = {
                 type: document.querySelector('input[name="cfg-type"]:checked') ? document.querySelector('input[name="cfg-type"]:checked').value : 'INVADE',
                 mode: document.querySelector('input[name="cfg-mode"]:checked') ? document.querySelector('input[name="cfg-mode"]:checked').value : 'STANDARD',
                 powerMode: document.querySelector('input[name="cfg-powerMode"]:checked') ? document.querySelector('input[name="cfg-powerMode"]:checked').value : 'DEPLETING',
                 width: boardW,
                 height: boardH,
-                credits: parseInt(document.getElementById('cfg-credits').value) || 50,
+                credits: parseInt(document.getElementById('cfg-credits').value) || 100,
+                numMines: isNaN(parsedNumMines) ? 2 : Math.max(0, parsedNumMines),
+                mineCredit: isNaN(parsedMineCredit) ? 5 : Math.max(0, parsedMineCredit),
                 flagCost: parseInt(document.getElementById('cfg-flagCost').value) || 10,
                 barricadeCost: parseInt(document.getElementById('cfg-barricadeCost').value) || 10,
+                barricadeRemovable: remChk ? remChk.checked : true,
+                barricadeKillZone: kzChk ? kzChk.checked : true,
                 maxStrength: parseInt(document.getElementById('cfg-maxStrength').value) || 10,
                 maxSpeed: parseInt(document.getElementById('cfg-maxSpeed').value) || 5,
                 timerDuration: parseInt(document.querySelector('input[name="cfg-timer"]:checked') ? document.querySelector('input[name="cfg-timer"]:checked').value : '0'),
@@ -4775,66 +6387,92 @@ document.addEventListener('DOMContentLoaded', () => {
         configModal.classList.add('hidden');
         uiLayer.classList.remove('hidden');
 
-        // Max ranges are now handled dynamically by the buildDeployMatrix method in ui.js
-
-        // Initialize systems
         const canvas = document.getElementById('gameCanvas');
-
         const game = new HexGame(config);
-        const render = new RenderEngine(canvas, game);
-        const input = new InputController(canvas, game, render);
-        const ui = new UIManager(game, render, input);
-
-        game.ui = ui; // Bind explicitly for animation dispatches
-
-        // Attach special engine classes globally so game.js can easily broadcast
         game.gameMode = GLOBAL_MODE;
+
+        let render, input, ui;
+        if (window.gameAPI && window.gameAPI.render && window.gameAPI.input && window.gameAPI.ui) {
+            // Reuse existing Render, Input, and UI instances to avoid duplicate DOM listeners
+            render = window.gameAPI.render;
+            input = window.gameAPI.input;
+            ui = window.gameAPI.ui;
+
+            render.game = game;
+            render.clearExplosions();
+            if (typeof render.clearMoveAnimations === 'function') {
+                render.clearMoveAnimations();
+            }
+            render.centerCamera();
+
+            input.game = game;
+            game.ui = ui;
+            ui.bindGame(game);
+        } else {
+            render = new RenderEngine(canvas, game);
+            input = new InputController(canvas, game, render);
+            ui = new UIManager(game, render, input);
+            game.ui = ui;
+        }
+
         if (GLOBAL_NETWORK) {
             GLOBAL_NETWORK.bindEngines(game, ui);
             ui.network = GLOBAL_NETWORK;
             game.network = GLOBAL_NETWORK;
 
-            if (GLOBAL_NETWORK.isHost && GLOBAL_NETWORK.connected) {
+            if (GLOBAL_NETWORK.isHost && GLOBAL_NETWORK.connected && !isRemoteOrRestored) {
                 GLOBAL_NETWORK.sendData({
-                    type: 'CONFIG',
+                    type: 'RESTART_GAME',
                     config: config
                 });
             }
         }
 
         if (GLOBAL_MODE === 'AI') {
-            // Deploying the freshly unified strict mathematical engine (V1)
             GLOBAL_AI = new AIBotV3(game);
             game.aiBot = GLOBAL_AI;
             game.localTeam = 'BLUE';
         }
 
-        // On game state changes, trigger AI if necessary
+        // On game state changes, reset active UI state, update HUD, and trigger AI if necessary
         game.onStateChange = () => {
+            ui.currentAction = null;
+            game.selectedTile = null;
+            render.validPath = null;
+            ui.closeContextMenu();
             ui.updateHUD();
-            if (GLOBAL_MODE === 'AI' && GLOBAL_AI && game.activeTeam === 'RED') {
+            if (GLOBAL_MODE === 'AI' && GLOBAL_AI && game.activeTeam === 'RED' && !game.winner) {
                 game.logSystem('Computer is thinking...');
                 setTimeout(() => {
-                    if (game.activeTeam === 'RED') {
+                    if (game.activeTeam === 'RED' && !game.winner) {
                         GLOBAL_AI.executeTurn();
                     }
-                }, 600); // Stall execution precisely past the native 500ms DOM interpolation
+                }, 600);
             }
         };
 
-        // Sync initial HUD state
+        if (restoredSession) {
+            game.restoreFromSession(restoredSession);
+        } else {
+            game.logSystem(`Game Started! Grid: ${config.width}x${config.height} | Mode: ${config.mode}`);
+        }
+
+        game.enablePersistence = true;
+        game.saveSessionToStorage();
+
+        // Sync HUD state
+        ui.refreshLog();
         ui.updateHUD();
-        game.logSystem(`Game Started! Grid: ${config.width}x${config.height} | Mode: ${config.mode}`);
 
         window.gameAPI = { game, render, input, ui, network: GLOBAL_NETWORK, ai: GLOBAL_AI };
 
-        // Do not start timer if we are the Host waiting for a Guest to connect.
-        // The NetworkManager will start it when the guest joins.
-        const isWaitingHost = GLOBAL_MODE === 'ONLINE' && (!GLOBAL_NETWORK || GLOBAL_NETWORK.isHost) && !overrideConfig;
-        if (!isWaitingHost && game.timerDuration > 0) {
+        // Start timer unless we are an un-connected Host waiting for a Guest
+        const isWaitingHost = GLOBAL_MODE === 'ONLINE' && (!GLOBAL_NETWORK || !GLOBAL_NETWORK.connected);
+        if (!isWaitingHost && game.timerDuration > 0 && !game.winner) {
             game.startTimer();
         }
     }
 });
+
 
 

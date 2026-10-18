@@ -32,8 +32,10 @@ export class RenderEngine {
         requestAnimationFrame(() => this.drawLoop());
     }
 
-    getMeshPattern() {
-        if (this._meshPattern) return this._meshPattern;
+    getMeshPattern(team = null) {
+        if (!this._meshPatterns) this._meshPatterns = {};
+        const key = team || 'NEUTRAL';
+        if (this._meshPatterns[key]) return this._meshPatterns[key];
 
         // Brick Wall Texture configuration
         const pCanvas = document.createElement('canvas');
@@ -41,12 +43,18 @@ export class RenderEngine {
         pCanvas.height = 16;
         const pCtx = pCanvas.getContext('2d');
 
-        // Match empty void baseline mathematically
-        pCtx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-        pCtx.fillRect(0, 0, 30, 16);
+        if (team === 'BLUE') {
+            pCtx.fillStyle = 'rgba(30, 58, 138, 0.45)';
+            pCtx.strokeStyle = 'rgba(147, 197, 253, 0.48)';
+        } else if (team === 'RED') {
+            pCtx.fillStyle = 'rgba(127, 29, 29, 0.45)';
+            pCtx.strokeStyle = 'rgba(252, 165, 165, 0.48)';
+        } else {
+            pCtx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+            pCtx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+        }
 
-        // Draw brick mortar lines perfectly crisp natively using 0.5px translation boundaries
-        pCtx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+        pCtx.fillRect(0, 0, 30, 16);
         pCtx.lineWidth = 1;
 
         // Horizontal mortar strokes seamlessly delineating rows
@@ -73,8 +81,56 @@ export class RenderEngine {
         pCtx.lineTo(0.5, 16);
         pCtx.stroke();
 
-        this._meshPattern = this.ctx.createPattern(pCanvas, 'repeat');
-        return this._meshPattern;
+        this._meshPatterns[key] = this.ctx.createPattern(pCanvas, 'repeat');
+        return this._meshPatterns[key];
+    }
+
+    drawSkullIcon(cx, cy, size, team) {
+        const ctx = this.ctx;
+        const color = team === 'BLUE' ? '#60a5fa' : '#f87171';
+        const r = size;
+
+        ctx.save();
+        ctx.fillStyle = color;
+        ctx.strokeStyle = 'rgba(0, 0, 0, 0.85)';
+        ctx.lineWidth = Math.max(1, r * 0.16);
+        ctx.lineJoin = 'round';
+
+        // Cranium + Jaw silhouette
+        ctx.beginPath();
+        ctx.arc(cx, cy - r * 0.22, r * 0.75, Math.PI * 0.82, Math.PI * 0.18, false);
+        ctx.lineTo(cx + r * 0.44, cy + r * 0.65);
+        ctx.lineTo(cx - r * 0.44, cy + r * 0.65);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        // Eye sockets
+        ctx.fillStyle = '#090a0f';
+        ctx.beginPath();
+        ctx.arc(cx - r * 0.28, cy - r * 0.2, r * 0.2, 0, Math.PI * 2);
+        ctx.arc(cx + r * 0.28, cy - r * 0.2, r * 0.2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Nasal cavity
+        ctx.beginPath();
+        ctx.moveTo(cx, cy + r * 0.02);
+        ctx.lineTo(cx - r * 0.12, cy + r * 0.24);
+        ctx.lineTo(cx + r * 0.12, cy + r * 0.24);
+        ctx.closePath();
+        ctx.fill();
+
+        // Jaw teeth lines
+        ctx.strokeStyle = '#090a0f';
+        ctx.lineWidth = Math.max(0.8, r * 0.12);
+        ctx.beginPath();
+        ctx.moveTo(cx - r * 0.15, cy + r * 0.4);
+        ctx.lineTo(cx - r * 0.15, cy + r * 0.63);
+        ctx.moveTo(cx + r * 0.15, cy + r * 0.4);
+        ctx.lineTo(cx + r * 0.15, cy + r * 0.63);
+        ctx.stroke();
+
+        ctx.restore();
     }
 
     resize() {
@@ -424,17 +480,21 @@ export class RenderEngine {
         }
         this.ctx.stroke();
 
-        // Dynamically compute UX Threat Map Overlays natively via Asymmetric HUD configuration
-        let showRedMove = false;
-        let showBlueMove = false;
-
-        // In AI and Online modes, persistently use the local human player's viewpoint and toggles
+        // Dynamically compute UX Threat Map & Enemy Visibility Overlays via HUD configuration
         let viewerTeam = (this.game.gameMode === 'AI' || this.game.gameMode === 'ONLINE') ? (this.game.localTeam || 'BLUE') : this.game.activeTeam;
         let prefix = viewerTeam.toLowerCase();
-        let bR = document.getElementById(`chk-${prefix}-cfg-red`);
-        let bB = document.getElementById(`chk-${prefix}-cfg-blue`);
-        showRedMove = bR ? bR.checked : false;
-        showBlueMove = bB ? bB.checked : false;
+        let chkMove = document.getElementById(`chk-${prefix}-cfg-move`);
+        let chkVis = document.getElementById(`chk-${prefix}-cfg-vis`);
+        let showMoveOverlay = chkMove ? chkMove.checked : false;
+        let showVisOverlay = chkVis ? chkVis.checked : false;
+
+        let showRedMove = showMoveOverlay;
+        let showBlueMove = showMoveOverlay;
+
+        let enemyVisionOverlay = null;
+        if (showVisOverlay && this.game && typeof this.game.getCombinedEnemyVision === 'function') {
+            enemyVisionOverlay = this.game.getCombinedEnemyVision(viewerTeam);
+        }
 
         let blueThreat = new Set();
         let redThreat = new Set();
@@ -514,6 +574,13 @@ export class RenderEngine {
             }
         }
 
+        let blueCombinedReach = null;
+        let redCombinedReach = null;
+        if (showMoveOverlay && showVisOverlay) {
+            blueCombinedReach = new Set([...blueThreat, ...blueThreatUncertain]);
+            redCombinedReach = new Set([...redThreat, ...redThreatUncertain]);
+        }
+
         const isAIHeatmapDebug = (this.game.ui && this.game.ui.showAIHeatmap);
 
         let aiTreeKeys = null;
@@ -529,6 +596,10 @@ export class RenderEngine {
             if (posVals.length > 0) heatmapMaxPos = Math.max(...posVals);
             if (negVals.length > 0) heatmapMaxNeg = Math.max(...negVals.map(v => Math.abs(v)));
         }
+
+        const killZones = (this.game && typeof this.game.getBarricadeKillZones === 'function')
+            ? this.game.getBarricadeKillZones()
+            : { dangerForBlue: new Set(), dangerForRed: new Set() };
 
         // Draw board base
         for (let col = 0; col < this.game.cols; col++) {
@@ -547,36 +618,46 @@ export class RenderEngine {
                 if (col === 0) fill = 'rgba(59, 130, 246, 0.3)'; // Brighter Blue zone
                 if (col === this.game.cols - 1) fill = 'rgba(239, 68, 68, 0.3)'; // Brighter Red zone
 
-                // Threat Map Overlays (Calculated natively based on Fog of War)
+                // Overlays (Enemy Visibility Overlay vs Movement Range Fill Overlay)
                 if (!isHomeBase) {
-                    let rT = redThreat.has(key);
-                    let bT = blueThreat.has(key);
+                    if (showVisOverlay && enemyVisionOverlay) {
+                        if (enemyVisionOverlay.inspect.has(key)) {
+                            fill = 'rgba(255, 255, 255, 0.08)';
+                        } else if (enemyVisionOverlay.spot.has(key)) {
+                            fill = 'rgba(255, 255, 255, 0.04)';
+                        } else {
+                            fill = 'rgba(0, 0, 0, 0.2)';
+                        }
+                    } else if (showMoveOverlay) {
+                        let rT = redThreat.has(key);
+                        let bT = blueThreat.has(key);
 
-                    let rTU = !rT && redThreatUncertain.has(key);
-                    let bTU = !bT && blueThreatUncertain.has(key);
+                        let rTU = !rT && redThreatUncertain.has(key);
+                        let bTU = !bT && blueThreatUncertain.has(key);
 
-                    if (rT || bT || rTU || bTU) {
-                        let pulse = (Math.sin(Date.now() / 300) + 1) / 2;
+                        if (rT || bT || rTU || bTU) {
+                            let pulse = (Math.sin(Date.now() / 300) + 1) / 2;
 
-                        let wR = rT ? 1 : (rTU ? pulse : 0);
-                        let wB = bT ? 1 : (bTU ? pulse : 0);
+                            let wR = rT ? 1 : (rTU ? pulse : 0);
+                            let wB = bT ? 1 : (bTU ? pulse : 0);
 
-                        let totalW = wR + wB;
-                        if (totalW > 0) {
-                            let pctR = wR / totalW;
-                            let pctB = wB / totalW;
+                            let totalW = wR + wB;
+                            if (totalW > 0) {
+                                let pctR = wR / totalW;
+                                let pctB = wB / totalW;
 
-                            // Severely darken the absolute max luminosity so it reads as a 'dark' hint rather than a neon grid natively
-                            let R = Math.floor(pctR * 210);
-                            let B = Math.floor(pctB * 210);
+                                // Severely darken the absolute max luminosity so it reads as a 'dark' hint rather than a neon grid natively
+                                let R = Math.floor(pctR * 210);
+                                let B = Math.floor(pctB * 210);
 
-                            // Base standard threat projection is 0.10 (subtle faint). 
-                            // Strongest overlap intersection maximizes at 0.15.
-                            let minW = Math.min(wR, wB);
-                            let maxW = Math.max(wR, wB);
-                            let finalAlpha = (0.10 * maxW) + (0.05 * minW);
+                                // Base standard threat projection is 0.10 (subtle faint). 
+                                // Strongest overlap intersection maximizes at 0.15.
+                                let minW = Math.min(wR, wB);
+                                let maxW = Math.max(wR, wB);
+                                let finalAlpha = (0.10 * maxW) + (0.05 * minW);
 
-                            fill = `rgba(${R}, 0, ${B}, ${finalAlpha.toFixed(3)})`;
+                                fill = `rgba(${R}, 0, ${B}, ${finalAlpha.toFixed(3)})`;
+                            }
                         }
                     }
                 }
@@ -593,14 +674,29 @@ export class RenderEngine {
                         } else if (vis.spot.has(key)) {
                             // Spot: Darker translucent gray (0.04 alpha pure white over dark background)
                             fill = 'rgba(255, 255, 255, 0.04)';
+                        } else {
+                            fill = 'rgba(0, 0, 0, 0.2)';
                         }
                     }
                 }
 
-                // Barricade styling
+                // Gold Mine tile styling
+                if (tile && tile.isMine) {
+                    fill = 'rgba(251, 191, 36, 0.45)';
+                    stroke = '#fbbf24';
+                    lineWidth = 2;
+                }
+
+                // Barricade styling (gray+blue for Blue, gray+red for Red)
                 if (tile.isBarricade) {
-                    fill = this.getMeshPattern(); // Replaces solid black with transparent mesh
-                    stroke = '#e2e8f0'; // bright gray, almost white
+                    fill = this.getMeshPattern(tile.barricadeTeam);
+                    if (tile.barricadeTeam === 'BLUE') {
+                        stroke = '#93c5fd';
+                    } else if (tile.barricadeTeam === 'RED') {
+                        stroke = '#fca5a5';
+                    } else {
+                        stroke = '#e2e8f0';
+                    }
                     lineWidth = 2;
                 }
 
@@ -664,6 +760,36 @@ export class RenderEngine {
                 // Unreachable tile dark overlay: 90% black overlay on top of tiles unreachable by the AI bot
                 if (hm && !hm.isBarricade && !hm.botReachable) {
                     this.drawHex(pt.x, pt.y, this.hexRadius - 1, 'rgba(0, 0, 0, 0.9)', stroke, lineWidth);
+                }
+
+                // When both Movement and Visibility overlays are active, draw combined Blue and Red movement outer perimeter lines
+                if (showMoveOverlay && showVisOverlay) {
+                    const inBlue = blueCombinedReach && blueCombinedReach.has(key);
+                    const inRed = redCombinedReach && redCombinedReach.has(key);
+                    if (inBlue || inRed) {
+                        const ax = hexMath.offsetToAxial(col, row);
+                        const blueStroke = 'rgba(137, 180, 249, 0.95)';
+                        const redStroke = 'rgba(245, 143, 143, 0.95)';
+                        for (let d = 0; d < 6; d++) {
+                            let dir = hexMath.hexDirections[d];
+                            const nAx = { q: ax.q + dir.dq, r: ax.r + dir.dr };
+                            const nOff = hexMath.axialToOffset(nAx.q, nAx.r);
+                            let nKey = `${nOff.col},${nOff.row}`;
+                            let segI = (6 - d) % 6;
+
+                            const isBlueBorder = inBlue && !blueCombinedReach.has(nKey);
+                            const isRedBorder = inRed && !redCombinedReach.has(nKey);
+
+                            if (isBlueBorder && isRedBorder) {
+                                this.drawHexSegment(pt.x, pt.y, this.hexRadius - 1, blueStroke, 3.5, segI);
+                                this.drawHexSegment(pt.x, pt.y, this.hexRadius - 4.5, redStroke, 3.5, segI);
+                            } else if (isBlueBorder) {
+                                this.drawHexSegment(pt.x, pt.y, this.hexRadius - 1, blueStroke, 3.5, segI);
+                            } else if (isRedBorder) {
+                                this.drawHexSegment(pt.x, pt.y, this.hexRadius - 1, redStroke, 3.5, segI);
+                            }
+                        }
+                    }
                 }
 
                 // Draw perimeter strokes for reachable zones natively 
@@ -739,6 +865,27 @@ export class RenderEngine {
                     if (!isCurrentlyAnimating) {
                         baseUnit.isAnimating = false;
                         this.drawUnit(pt.x, pt.y, col, row, baseUnit);
+                    }
+                }
+
+                // Draw Barricade Kill Zone Skull Indicator(s)
+                if (!tile.isBarricade) {
+                    const isBlueKill = killZones.dangerForBlue.has(key);
+                    const isRedKill = killZones.dangerForRed.has(key);
+
+                    if (isBlueKill || isRedKill) {
+                        const skullSize = Math.max(4.5, this.hexRadius * 0.24);
+                        const skullY = baseUnit ? (pt.y + this.hexRadius * 0.56) : pt.y;
+
+                        if (isBlueKill && isRedKill) {
+                            const offsetX = skullSize * 0.95;
+                            this.drawSkullIcon(pt.x - offsetX, skullY, skullSize, 'BLUE');
+                            this.drawSkullIcon(pt.x + offsetX, skullY, skullSize, 'RED');
+                        } else if (isBlueKill) {
+                            this.drawSkullIcon(pt.x, skullY, skullSize, 'BLUE');
+                        } else if (isRedKill) {
+                            this.drawSkullIcon(pt.x, skullY, skullSize, 'RED');
+                        }
                     }
                 }
             }

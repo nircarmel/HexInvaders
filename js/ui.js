@@ -7,13 +7,23 @@ export class UIManager {
         this.render = render;
         if (this.render) this.render.ui = this;
         this.input = input;
+        this.canvas = this.render ? this.render.canvas : document.getElementById('gameCanvas');
 
         this.currentAction = null; // 'MOVE', 'WAITING_MOVE'
+        this.isTimerMuted = false;
 
         this.bindEvents();
-        this.updateHUD();
+        this.bindGame(game);
+    }
 
-        this.isTimerMuted = false;
+    bindGame(game) {
+        this.game = game;
+        this.topPanelInitialized = false;
+        this.historyHasWon = false;
+        this.timeMachineOpen = false;
+        this.showAIHeatmap = false;
+        this.aiHeatmapTeam = null;
+        this.resetActiveState();
 
         this.game.onLog = () => this.refreshLog();
         this.game.onCombat = (c, r, instant = false) => {
@@ -31,11 +41,18 @@ export class UIManager {
             this.updateHUD();
         };
         this.game.onWinner = (team, reason) => this.showVictory(team, reason);
+
+        this.refreshLog();
+        this.updateHUD();
     }
 
     bindEvents() {
         this.btnEndTurn = document.getElementById('btn-end-turn');
         this.btnEndTurn.addEventListener('click', () => {
+            if (this.game.historyIndex !== this.game.history.length - 1) {
+                this.game.logSystem("Viewing history. Return to Live state to take actions.");
+                return;
+            }
             if (this.game.gameMode === 'ONLINE' && this.game.localTeam !== this.game.activeTeam) return;
             if (this.game.gameMode === 'AI' && this.game.activeTeam === 'RED') return;
             this.game.endTurn();
@@ -154,10 +171,20 @@ export class UIManager {
             this.updateHUD();
         });
         const btnExitGame = document.getElementById('btn-exit-game');
-        if (btnExitGame) btnExitGame.onclick = () => location.reload();
+        if (btnExitGame) {
+            btnExitGame.onclick = () => {
+                if (window.exitToMenu) window.exitToMenu();
+                else location.reload();
+            };
+        }
 
         const btnRestart = document.getElementById('btn-restart-game');
-        if (btnRestart) btnRestart.onclick = () => { if (window.restartCurrentGame) window.restartCurrentGame(this.game.config); };
+        if (btnRestart) {
+            btnRestart.onclick = () => {
+                if (window.requestGameRestart) window.requestGameRestart(this.game.config);
+                else if (window.restartCurrentGame) window.restartCurrentGame(this.game.config);
+            };
+        }
 
         // Context Menu Elements
         this.contextMenu = document.getElementById('context-menu');
@@ -415,8 +442,8 @@ export class UIManager {
 
         const bCredits = document.getElementById('blue-credits');
         const rCredits = document.getElementById('red-credits');
-        if (bCredits) bCredits.innerText = this.game.credits['BLUE'];
-        if (rCredits) rCredits.innerText = this.game.credits['RED'];
+        if (bCredits) this.renderCreditDisplay(bCredits, 'BLUE');
+        if (rCredits) this.renderCreditDisplay(rCredits, 'RED');
 
         const goalText = document.getElementById('help-goal-text');
         if (goalText && this.game.config) {
@@ -463,15 +490,18 @@ export class UIManager {
         const isCurrentPlayerBot = (this.game.gameMode === 'AI' && this.game.activeTeam !== this.game.localTeam);
         skipBtn.style.display = isCurrentPlayerBot ? 'none' : 'block';
 
-        // When playing vs computer, remove the two hexagon (red/blue) buttons on the bot AI's player panel
-        const isRedBot = (this.game.gameMode === 'AI' && (this.game.localTeam === 'BLUE' || !this.game.localTeam));
+        // In AI and Online modes, show overlay toggle buttons only on the local human player's panel
+        const hideRedToggles = (this.game.gameMode === 'AI' && (this.game.localTeam === 'BLUE' || !this.game.localTeam)) ||
+            (this.game.gameMode === 'ONLINE' && this.game.localTeam === 'BLUE');
+        const hideBlueToggles = (this.game.gameMode === 'AI' && this.game.localTeam === 'RED') ||
+            (this.game.gameMode === 'ONLINE' && this.game.localTeam === 'RED');
         const redHexToggleGroup = document.getElementById('red-hex-toggle-group');
         if (redHexToggleGroup) {
-            redHexToggleGroup.style.display = isRedBot ? 'none' : 'flex';
+            redHexToggleGroup.style.display = hideRedToggles ? 'none' : 'flex';
         }
         const blueHexToggleGroup = document.getElementById('blue-hex-toggle-group');
         if (blueHexToggleGroup) {
-            blueHexToggleGroup.style.display = 'flex';
+            blueHexToggleGroup.style.display = hideBlueToggles ? 'none' : 'flex';
         }
 
         if (this.game.winner && !this.historyHasWon) {
@@ -494,21 +524,104 @@ export class UIManager {
         if (blueAiContainer) blueAiContainer.style.display = isBlueAI ? 'flex' : 'none';
         if (redAiContainer) redAiContainer.style.display = isRedAI ? 'flex' : 'none';
 
+        this.updateTurnStatusIndicators();
+
         if (this.showAIHeatmap) {
             this.updateAIHeatmapForCurrentSnapshot();
         }
         this.updateAIHeatmapUI();
     }
 
+    updateTurnStatusIndicators() {
+        const topLeft = document.getElementById('top-left-turn-status');
+        const topRight = document.getElementById('top-right-turn-status');
+        if (!topLeft || !topRight) return;
+
+        if (this.game.isGameOver || this.game.winner) {
+            topLeft.innerHTML = '';
+            topRight.innerHTML = '';
+            return;
+        }
+
+        const isLocal1v1 = !this.game.gameMode || this.game.gameMode === 'LOCAL';
+        const myTeam = this.game.localTeam || 'BLUE';
+        const activeTeam = this.game.liveActiveTeam || this.game.activeTeam;
+
+        const renderSlot = (el, team) => {
+            if (!isLocal1v1 && team !== myTeam) {
+                el.innerHTML = '';
+                return;
+            }
+
+            const isTurn = (activeTeam === team);
+            const color = team === 'BLUE' ? '#60a5fa' : '#f87171';
+            const glow = team === 'BLUE' ? 'rgba(96, 165, 250, 0.45)' : 'rgba(248, 113, 113, 0.45)';
+
+            if (isTurn) {
+                const playSvg = `<svg width="18" height="18" viewBox="0 0 24 24" fill="${color}" style="flex-shrink: 0; filter: drop-shadow(0 0 6px ${glow});"><polygon points="6,4 20,12 6,20"></polygon></svg>`;
+                el.innerHTML = `<div style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; color: ${color}; font-family: 'Inter', sans-serif; font-size: 1rem; font-weight: 700; letter-spacing: 0.5px; text-shadow: 0 0 8px ${glow};">${playSvg}<span>Your Turn</span></div>`;
+            } else {
+                const clockSvg = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${color}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink: 0;"><circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 15.5 14"></polyline></svg>`;
+                el.innerHTML = `<div style="display: inline-flex; align-items: center; justify-content: center; gap: 8px; color: ${color}; font-family: 'Inter', sans-serif; font-size: 1rem; font-weight: 600; letter-spacing: 0.5px; opacity: 0.9;">${clockSvg}<span>Waiting...</span></div>`;
+            }
+        };
+
+        renderSlot(topLeft, 'BLUE');
+        renderSlot(topRight, 'RED');
+    }
+
+    renderCreditDisplay(el, team) {
+        const isLocal1v1 = !this.game.gameMode || this.game.gameMode === 'LOCAL';
+        const myTeam = this.game.localTeam || 'BLUE';
+        const viewerTeam = isLocal1v1 ? null : myTeam;
+        const mineBonus = (this.game && typeof this.game.getMineIncome === 'function')
+            ? this.game.getMineIncome(team, viewerTeam)
+            : 0;
+        const bonusHtml = mineBonus > 0
+            ? `<span style="font-size: 1.25rem; color: #fbbf24; font-weight: 600; margin-left: 6px;">(+${mineBonus})</span>`
+            : '';
+
+        if (isLocal1v1 || team === myTeam) {
+            el.innerHTML = `<span style="display: inline-flex; align-items: baseline; justify-content: center;"><span>${this.game.credits[team]}</span>${bonusHtml}</span>`;
+            el.removeAttribute('title');
+            return;
+        }
+
+        const maxCredits = Math.max(1, (this.game.config && this.game.config.credits) ? this.game.config.credits : 100);
+        const currentCredits = this.game.credits[team];
+        const ratio = currentCredits / maxCredits;
+
+        let coinCount = 1;
+        let label = '< 25% credit available';
+        if (ratio > 0.50) {
+            coinCount = 3;
+            label = '> 50% credit available';
+        } else if (ratio >= 0.25) {
+            coinCount = 2;
+            label = '25% - 50% credit available';
+        }
+
+        el.title = label;
+        const coinSvg = `<svg width="28" height="28" viewBox="0 0 24 24" style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.6));"><circle cx="12" cy="12" r="10" fill="#fbbf24" stroke="#d97706" stroke-width="2"/><circle cx="12" cy="12" r="7" fill="none" stroke="#fde68a" stroke-width="1" stroke-dasharray="2 1"/><text x="12" y="16" text-anchor="middle" font-size="12" font-weight="bold" font-family="Inter, sans-serif" fill="#78350f">$</text></svg>`;
+        el.innerHTML = `<div style="display: inline-flex; align-items: center; justify-content: center; gap: 5px; height: 2.5rem;">${coinSvg.repeat(coinCount)}${bonusHtml}</div>`;
+    }
+
     refreshLog() {
         const c = document.getElementById('action-log');
         c.innerHTML = '';
         const limit = Math.max(0, this.game.logs.length - 50);
+        const hideOpponentCost = this.game.gameMode && this.game.gameMode !== 'LOCAL';
+        const myLogType = (this.game.localTeam || 'BLUE') === 'BLUE' ? 'blue' : 'red';
+
         for (let i = limit; i < this.game.logs.length; i++) {
             const l = this.game.logs[i];
             const div = document.createElement('div');
             div.className = `log-entry log-entry-${l.type} ${l.isCombat ? 'log-entry-combat' : ''}`;
-            div.innerText = l.text;
+            let text = l.text;
+            if (hideOpponentCost && (l.type === 'blue' || l.type === 'red') && l.type !== myLogType) {
+                text = text.replace(/ for \d+ cr\./g, '.');
+            }
+            div.innerText = text;
             c.appendChild(div);
         }
         c.scrollTop = c.scrollHeight;
@@ -551,6 +664,25 @@ export class UIManager {
                 this.resetActiveState();
                 this.updateHUD();
             });
+        } else if (customOpts.isRemoveBarricade) {
+            headerText.innerText = 'Barricade';
+            closeBtn.style.display = 'none';
+
+            this.contextOptions.innerHTML = `
+                <div style="text-align: center; color: #ccc; margin-bottom: 14px; font-size: 0.85rem; line-height: 1.4;">
+                    Use your turn action to destroy this barricade?
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 8px; justify-content: center;">
+                    <button id="btn-barricade-remove" class="btn-action" style="background: rgba(239, 68, 68, 0.25); border-color: rgba(239, 68, 68, 0.6); color: #fca5a5;">Remove Barricade</button>
+                    <button id="btn-barricade-remove-cancel" class="btn-action" style="background: rgba(255, 255, 255, 0.08); border-color: rgba(255, 255, 255, 0.2); color: #ccc;">Cancel</button>
+                </div>
+            `;
+
+            document.getElementById('btn-barricade-remove').addEventListener('click', customOpts.onConfirm);
+            document.getElementById('btn-barricade-remove-cancel').addEventListener('click', () => {
+                this.resetActiveState();
+                this.updateHUD();
+            });
         } else {
             headerText.innerText = 'Deploy Unit';
             closeBtn.style.display = 'block';
@@ -569,8 +701,9 @@ export class UIManager {
 
         const rect = this.canvas.getBoundingClientRect();
 
-        const estMaxHeight = customOpts.isBarricade ? 180 : 450;
-        const estMaxWidth = customOpts.isBarricade ? 200 : 270;
+        const isCompactPopup = customOpts.isBarricade || customOpts.isRemoveBarricade;
+        const estMaxHeight = isCompactPopup ? 180 : 450;
+        const estMaxWidth = isCompactPopup ? 210 : 270;
 
         let localX = x - rect.left;
         let localY = y - rect.top;
@@ -584,6 +717,33 @@ export class UIManager {
         this.contextMenu.style.left = `${safeX}px`;
         this.contextMenu.style.top = `${safeY}px`;
         this.contextMenu.style.transform = 'none';
+    }
+
+    promptRemoveBarricade(col, row, key, e) {
+        if (this.game.config && this.game.config.barricadeRemovable === false) return false;
+        const tile = this.game.getTile(col, row);
+        if (!tile || !tile.isBarricade) return false;
+        if (tile.barricadeTeam !== this.game.activeTeam) return false;
+
+        if (this.game.actionUsed) {
+            this.game.logSystem("You have already used your action this turn.");
+            return true;
+        }
+
+        this.currentAction = 'WAITING_REMOVE_BARRICADE';
+        this.game.selectedTile = key;
+        this.render.hoverHexes = null;
+        this.render.previewBarricade = this.game.getBarricadeGroupKeys(col, row);
+
+        this.openContextMenu(e.clientX, e.clientY, col, row, [], {
+            isRemoveBarricade: true,
+            onConfirm: () => {
+                this.game.removeBarricade(col, row);
+                this.resetActiveState();
+                this.updateHUD();
+            }
+        });
+        return true;
     }
 
     resetActiveState() {
@@ -613,9 +773,6 @@ export class UIManager {
         if (this.game.gameMode === 'ONLINE' && this.game.activeTeam !== this.game.localTeam) return;
         if (this.game.gameMode === 'AI' && this.game.activeTeam === 'RED') return;
 
-        if (this.game.gameMode === 'ONLINE' && this.game.activeTeam !== this.game.localTeam) return;
-        if (this.game.gameMode === 'AI' && this.game.activeTeam === 'RED') return;
-
         // If we are currently building a path
         if (this.currentAction === 'WAITING_MOVE' && this.game.selectedTile) {
             const s = this.game.selectedTile.split(',');
@@ -632,7 +789,12 @@ export class UIManager {
         this.resetActiveState();
 
         const tile = this.game.getTile(col, row);
-        if (tile.unit && tile.unit.team === this.game.activeTeam) {
+        if (tile.isBarricade && tile.barricadeTeam === this.game.activeTeam) {
+            if (this.promptRemoveBarricade(col, row, key, e)) {
+                this.updateHUD();
+                return;
+            }
+        } else if (tile.unit && tile.unit.team === this.game.activeTeam) {
             if (this.game.actionUsed) {
                 this.game.logSystem("You have already used your action this turn.");
                 return;
@@ -764,7 +926,12 @@ export class UIManager {
         this.resetActiveState();
 
         const tile = this.game.getTile(col, row);
-        if (tile.unit && tile.unit.team === this.game.activeTeam) {
+        if (tile.isBarricade && tile.barricadeTeam === this.game.activeTeam) {
+            if (this.promptRemoveBarricade(col, row, key, e)) {
+                this.updateHUD();
+                return;
+            }
+        } else if (tile.unit && tile.unit.team === this.game.activeTeam) {
             if (this.game.actionUsed) {
                 this.game.logSystem("You have already used your action this turn.");
                 return;
@@ -859,23 +1026,29 @@ export class UIManager {
 
         document.getElementById('victory-reason').innerText = reason;
 
-        document.getElementById('btn-play-again').onclick = () => location.reload();
+        document.getElementById('btn-play-again').onclick = () => {
+            if (window.exitToMenu) window.exitToMenu();
+            else location.reload();
+        };
 
         const btnExitGame = document.getElementById('btn-exit-game');
-        if (btnExitGame) btnExitGame.onclick = () => location.reload();
+        if (btnExitGame) {
+            btnExitGame.onclick = () => {
+                if (window.exitToMenu) window.exitToMenu();
+                else location.reload();
+            };
+        }
 
         const btnRestart = document.getElementById('btn-victory-restart');
-        if (this.game.gameMode === 'ONLINE' && this.network && !this.network.isHost) {
-            if (btnRestart) btnRestart.style.display = 'none';
-        } else {
-            if (btnRestart) {
-                btnRestart.style.display = 'block';
-                btnRestart.onclick = () => {
-                    if (window.restartCurrentGame) {
-                        window.restartCurrentGame(this.game.config);
-                    }
-                };
-            }
+        if (btnRestart) {
+            btnRestart.style.display = 'block';
+            btnRestart.onclick = () => {
+                if (window.requestGameRestart) {
+                    window.requestGameRestart(this.game.config);
+                } else if (window.restartCurrentGame) {
+                    window.restartCurrentGame(this.game.config);
+                }
+            };
         }
 
         document.getElementById('btn-review-game').onclick = () => {

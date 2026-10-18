@@ -20,13 +20,15 @@ export class HexGame {
         this.activeTeam = 'BLUE';
 
         // key format: "col,row" 
-        // value: { unit: Unit|null, isBarricade: boolean }
+        // value: { unit: Unit|null, isBarricade: boolean, isMine: boolean }
         this.board = new Map();
         for (let col = 0; col < this.cols; col++) {
             for (let row = 0; row < this.rows; row++) {
-                this.board.set(`${col},${row}`, { unit: null, isBarricade: false });
+                this.board.set(`${col},${row}`, { unit: null, isBarricade: false, barricadeTeam: null, barricadeId: null, isMine: false });
             }
         }
+
+        this.initMines();
 
         this.logs = [];
         this.selectedTile = null;
@@ -57,8 +59,354 @@ export class HexGame {
         // Timers in network games will be started manually upon connection
     }
 
+    initMines() {
+        if (!this.config) return;
+        let minePositions = Array.isArray(this.config.minePositions) ? this.config.minePositions : null;
+
+        if (!minePositions) {
+            const numMines = (typeof this.config.numMines === 'number') ? Math.max(0, this.config.numMines) : 2;
+            minePositions = [];
+
+            if (numMines > 0) {
+                const minCol = Math.max(2, Math.floor(this.cols * 0.25));
+                const maxCol = Math.min(this.cols - 3, Math.ceil(this.cols * 0.75) - 1);
+                const minRow = this.rows > 4 ? 1 : 0;
+                const maxRow = this.rows > 4 ? this.rows - 2 : this.rows - 1;
+                const used = new Set();
+
+                const isFarEnough = (c, r, minDist) => {
+                    for (const pos of minePositions) {
+                        const [pc, pr] = pos.split(',').map(Number);
+                        if (hexMath.offsetDistance(c, r, pc, pr) < minDist) return false;
+                    }
+                    return true;
+                };
+
+                // If odd number of mines, place 1 near the center first
+                let remaining = numMines;
+                if (remaining % 2 === 1) {
+                    const midCol = Math.floor(this.cols / 2);
+                    const midRow = Math.floor(this.rows / 2);
+                    const key = `${midCol},${midRow}`;
+                    if (this.board.has(key)) {
+                        minePositions.push(key);
+                        used.add(key);
+                        remaining--;
+                    }
+                }
+
+                // Place symmetric pairs across the board center so both players have equal access
+                const candidates = [];
+                for (let c = minCol; c <= maxCol; c++) {
+                    for (let r = minRow; r <= maxRow; r++) {
+                        candidates.push({ c, r });
+                    }
+                }
+                // Fallback to all non-home-zone tiles if needed
+                if (candidates.length < remaining) {
+                    for (let c = 2; c <= this.cols - 3; c++) {
+                        for (let r = 0; r < this.rows; r++) {
+                            candidates.push({ c, r });
+                        }
+                    }
+                }
+
+                // Shuffle candidates
+                for (let i = candidates.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [candidates[i], candidates[j]] = [candidates[j], candidates[i]];
+                }
+
+                for (const minDist of [3, 2, 1]) {
+                    if (remaining <= 0) break;
+                    for (const cand of candidates) {
+                        if (remaining <= 0) break;
+                        const c1 = cand.c;
+                        const r1 = cand.r;
+                        const c2 = this.cols - 1 - c1;
+                        const r2 = this.rows - 1 - r1;
+                        const k1 = `${c1},${r1}`;
+                        const k2 = `${c2},${r2}`;
+
+                        if (remaining >= 2) {
+                            if (k1 === k2 || used.has(k1) || used.has(k2)) continue;
+                            if (hexMath.offsetDistance(c1, r1, c2, r2) < minDist) continue;
+                            if (!isFarEnough(c1, r1, minDist) || !isFarEnough(c2, r2, minDist)) continue;
+                            minePositions.push(k1, k2);
+                            used.add(k1);
+                            used.add(k2);
+                            remaining -= 2;
+                        } else if (remaining === 1) {
+                            if (used.has(k1) || !isFarEnough(c1, r1, minDist)) continue;
+                            minePositions.push(k1);
+                            used.add(k1);
+                            remaining -= 1;
+                        }
+                    }
+                }
+            }
+
+            this.config.minePositions = minePositions;
+        }
+
+        for (const k of minePositions) {
+            const t = this.board.get(k);
+            if (t) t.isMine = true;
+        }
+    }
+
     get isGameOver() {
         return this.gameFinished === true || (this.history.length > 0 && this.history[this.history.length - 1].winner !== null);
+    }
+
+    get liveActiveTeam() {
+        if (this.history.length > 0) {
+            return this.history[this.history.length - 1].activeTeam;
+        }
+        return this.activeTeam;
+    }
+
+    ensureLiveState() {
+        const wasInHistory = this.historyIndex !== this.history.length - 1;
+        if (wasInHistory && this.history.length > 0) {
+            this.loadSnapshot(this.history.length - 1);
+        }
+        if (this.ui) {
+            if (this.ui.timeMachineOpen) {
+                this.ui.timeMachineOpen = false;
+            }
+            if (this.ui.showAIHeatmap) {
+                this.ui.showAIHeatmap = false;
+                this.ui.aiHeatmapTeam = null;
+            }
+            this.ui.resetActiveState();
+        }
+        return wasInHistory;
+    }
+
+    serializeSnapshot(index = this.history.length - 1) {
+        const snap = this.history[index];
+        if (!snap) return null;
+        const tiles = [];
+        for (let [k, v] of snap.board.entries()) {
+            if (v.unit || v.isBarricade || v.isMine) {
+                let uCopy = v.unit ? { ...v.unit } : null;
+                if (uCopy) delete uCopy.isAnimating;
+                tiles.push({
+                    k,
+                    unit: uCopy,
+                    isBarricade: !!v.isBarricade,
+                    barricadeTeam: v.barricadeTeam || null,
+                    barricadeId: v.barricadeId || null,
+                    isMine: !!v.isMine
+                });
+            }
+        }
+        return {
+            turnId: index,
+            tiles,
+            credits: { ...snap.credits },
+            activeTeam: snap.activeTeam,
+            winner: snap.winner || null,
+            actionUsed: !!snap.actionUsed,
+            deployCounts: { ...(snap.deployCounts || { 'BLUE': 0, 'RED': 0 }) },
+            hasFlag: { ...(snap.hasFlag || { 'BLUE': false, 'RED': false }) },
+            combats: snap.combats ? [...snap.combats] : [],
+            lastMove: snap.lastMove ? { ...snap.lastMove } : null
+        };
+    }
+
+    deserializeSnapshot(serialized) {
+        const board = new Map();
+        for (let col = 0; col < this.cols; col++) {
+            for (let row = 0; row < this.rows; row++) {
+                board.set(`${col},${row}`, { unit: null, isBarricade: false, barricadeTeam: null, barricadeId: null, isMine: false });
+            }
+        }
+        if (Array.isArray(serialized.tiles)) {
+            for (const t of serialized.tiles) {
+                if (board.has(t.k)) {
+                    let uCopy = t.unit ? { ...t.unit } : null;
+                    if (uCopy) delete uCopy.isAnimating;
+                    board.set(t.k, {
+                        unit: uCopy,
+                        isBarricade: !!t.isBarricade,
+                        barricadeTeam: t.barricadeTeam || null,
+                        barricadeId: t.barricadeId || null,
+                        isMine: !!t.isMine
+                    });
+                }
+            }
+        }
+        return {
+            board,
+            credits: { ...serialized.credits },
+            activeTeam: serialized.activeTeam,
+            winner: serialized.winner || null,
+            actionUsed: !!serialized.actionUsed,
+            deployCounts: { ...(serialized.deployCounts || { 'BLUE': 0, 'RED': 0 }) },
+            hasFlag: { ...(serialized.hasFlag || { 'BLUE': false, 'RED': false }) },
+            combats: Array.isArray(serialized.combats) ? [...serialized.combats] : [],
+            lastMove: serialized.lastMove ? { ...serialized.lastMove } : null
+        };
+    }
+
+    doesLiveStateMatch(serialized) {
+        if (!serialized || this.history.length === 0) return false;
+        const liveIdx = this.history.length - 1;
+        if (typeof serialized.turnId === 'number' && liveIdx !== serialized.turnId) return false;
+
+        const liveSnap = this.history[liveIdx];
+        if (liveSnap.activeTeam !== serialized.activeTeam) return false;
+        if ((liveSnap.winner || null) !== (serialized.winner || null)) return false;
+        if (liveSnap.credits.BLUE !== serialized.credits.BLUE || liveSnap.credits.RED !== serialized.credits.RED) return false;
+
+        let liveNonEmptyCount = 0;
+        for (let [k, v] of liveSnap.board.entries()) {
+            if (v.unit || v.isBarricade || v.isMine) liveNonEmptyCount++;
+        }
+        const remoteTiles = Array.isArray(serialized.tiles) ? serialized.tiles : [];
+        if (liveNonEmptyCount !== remoteTiles.length) return false;
+
+        for (const rt of remoteTiles) {
+            const lt = liveSnap.board.get(rt.k);
+            if (!lt) return false;
+            if (!!lt.isBarricade !== !!rt.isBarricade) return false;
+            if (lt.isBarricade && (lt.barricadeTeam || null) !== (rt.barricadeTeam || null)) return false;
+            if (!!lt.isMine !== !!rt.isMine) return false;
+            if (!!lt.unit !== !!rt.unit) return false;
+            if (lt.unit && rt.unit) {
+                if (lt.unit.team !== rt.unit.team ||
+                    lt.unit.type !== rt.unit.type ||
+                    lt.unit.strength !== rt.unit.strength ||
+                    lt.unit.speed !== rt.unit.speed) {
+                    return false;
+                }
+            }
+        }
+        return true;
+    }
+
+    applyRemoteSnapshot(serialized) {
+        if (!serialized) return false;
+        const snap = this.deserializeSnapshot(serialized);
+        const targetTurnId = typeof serialized.turnId === 'number' ? serialized.turnId : this.history.length;
+
+        while (this.history.length <= targetTurnId) {
+            const filler = this.history.length > 0
+                ? this.deserializeSnapshot(this.serializeSnapshot(this.history.length - 1))
+                : snap;
+            this.history.push(filler);
+        }
+        if (this.history.length > targetTurnId + 1) {
+            this.history.length = targetTurnId + 1;
+        }
+        this.history[targetTurnId] = snap;
+
+        this.loadSnapshot(targetTurnId);
+        this.selectedTile = null;
+        this.invalidateOverlayCache();
+
+        if (this.winner) {
+            this.gameFinished = true;
+            if (this.timerInterval) clearInterval(this.timerInterval);
+            const winName = this.winner === 'BLUE' ? this.blueName : this.redName;
+            if (this.onWinner) this.onWinner(this.winner, `${winName} won the game!`);
+        } else if (this.timerDuration > 0) {
+            this.startTimer();
+        }
+
+        if (this.onStateChange) this.onStateChange();
+        this.saveSessionToStorage();
+        return true;
+    }
+
+    serializeFullHistory() {
+        return this.history.map((_, idx) => this.serializeSnapshot(idx));
+    }
+
+    applyRemoteHistory(serializedHistory) {
+        if (!Array.isArray(serializedHistory) || serializedHistory.length === 0) return false;
+        this.history = serializedHistory.map(s => this.deserializeSnapshot(s));
+        this.loadSnapshot(this.history.length - 1);
+        this.selectedTile = null;
+        this.invalidateOverlayCache();
+
+        if (this.winner) {
+            this.gameFinished = true;
+            if (this.timerInterval) clearInterval(this.timerInterval);
+            const winName = this.winner === 'BLUE' ? this.blueName : this.redName;
+            if (this.onWinner) this.onWinner(this.winner, `${winName} won the game!`);
+        } else if (this.timerDuration > 0) {
+            this.startTimer();
+        }
+
+        if (this.onStateChange) this.onStateChange();
+        this.saveSessionToStorage();
+        return true;
+    }
+
+    saveSessionToStorage() {
+        if (!this.enablePersistence) return;
+        if (typeof sessionStorage === 'undefined') return;
+        try {
+            const sessionData = {
+                version: 1,
+                timestamp: Date.now(),
+                gameMode: this.gameMode || 'LOCAL',
+                localTeam: this.localTeam || 'BLUE',
+                config: {
+                    ...this.config,
+                    blueName: this.blueName,
+                    redName: this.redName
+                },
+                blueName: this.blueName,
+                redName: this.redName,
+                winner: this.winner || null,
+                gameFinished: !!this.gameFinished,
+                logs: this.logs.slice(-50),
+                history: this.serializeFullHistory(),
+                networkInfo: this.network ? {
+                    isHost: !!this.network.isHost,
+                    hostId: this.network.hostId || null,
+                    guestName: this.network.guestName || 'Guest'
+                } : null
+            };
+            sessionStorage.setItem('TPOW_ACTIVE_SESSION', JSON.stringify(sessionData));
+        } catch (e) {
+            console.warn('Failed to save game session:', e);
+        }
+    }
+
+    restoreFromSession(sessionData) {
+        if (!sessionData) return false;
+        if (sessionData.blueName) {
+            this.blueName = sessionData.blueName;
+            if (this.config) this.config.blueName = sessionData.blueName;
+        }
+        if (sessionData.redName) {
+            this.redName = sessionData.redName;
+            if (this.config) this.config.redName = sessionData.redName;
+        }
+        if (sessionData.localTeam) {
+            this.localTeam = sessionData.localTeam;
+        }
+        if (Array.isArray(sessionData.logs)) {
+            this.logs = [...sessionData.logs];
+        }
+        if (Array.isArray(sessionData.history) && sessionData.history.length > 0) {
+            this.history = sessionData.history.map(s => this.deserializeSnapshot(s));
+            this.loadSnapshot(this.history.length - 1);
+        }
+        this.winner = sessionData.winner || this.winner || null;
+        this.gameFinished = !!sessionData.gameFinished || !!this.winner;
+        if (this.onLog) this.onLog();
+        if (this.onStateChange) this.onStateChange();
+        if (this.winner && this.onWinner) {
+            const winName = this.winner === 'BLUE' ? this.blueName : this.redName;
+            this.onWinner(this.winner, `${winName} won the game!`);
+        }
+        return true;
     }
 
     startTimer() {
@@ -78,15 +426,17 @@ export class HexGame {
 
                 if (this.timeLeft <= 0) {
                     clearInterval(this.timerInterval);
+                    const currentLiveTeam = this.liveActiveTeam;
                     let isActivePlayer = true;
                     if (this.network && this.localTeam) {
-                        isActivePlayer = (this.localTeam === this.activeTeam);
+                        isActivePlayer = (this.localTeam === currentLiveTeam);
                     }
-                    if (this.gameMode === 'AI' && this.activeTeam === 'RED') {
+                    if (this.gameMode === 'AI' && currentLiveTeam === 'RED') {
                         isActivePlayer = false; // AI handles its own execution
                     }
 
                     if (isActivePlayer) {
+                        this.ensureLiveState();
                         this.logSystem(`Time expired! Turn skipped.`);
                         this.endTurn();
                     }
@@ -113,7 +463,13 @@ export class HexGame {
                 uCopy = { ...v.unit };
                 delete uCopy.isAnimating;
             }
-            snap.board.set(k, { unit: uCopy, isBarricade: v.isBarricade });
+            snap.board.set(k, {
+                unit: uCopy,
+                isBarricade: v.isBarricade,
+                barricadeTeam: v.barricadeTeam || null,
+                barricadeId: v.barricadeId || null,
+                isMine: !!v.isMine
+            });
         }
         snap.lastMove = this.lastMove ? { ...this.lastMove } : null;
         // Save and increment
@@ -121,6 +477,7 @@ export class HexGame {
         this.historyIndex = this.history.length - 1;
         this.activeCombats = []; // Clear for next turn's actions
         this.lastMove = null;
+        this.saveSessionToStorage();
     }
 
     loadSnapshot(index) {
@@ -147,7 +504,13 @@ export class HexGame {
                 uCopy = { ...v.unit };
                 delete uCopy.isAnimating;
             }
-            this.board.set(k, { unit: uCopy, isBarricade: v.isBarricade });
+            this.board.set(k, {
+                unit: uCopy,
+                isBarricade: v.isBarricade,
+                barricadeTeam: v.barricadeTeam || null,
+                barricadeId: v.barricadeId || null,
+                isMine: !!v.isMine
+            });
         }
         this.credits = { ...snap.credits };
         this.activeTeam = snap.activeTeam;
@@ -198,6 +561,8 @@ export class HexGame {
     // Deploy unit logical check
     canDeploy(team, col, row, unitCost, isFlag = false) {
         if (this.historyIndex !== this.history.length - 1) return { valid: false, msg: "Cannot deploy in history mode." };
+        if (this.actionUsed || this.phase !== 'MAIN' || this.winner) return { valid: false, msg: "Action unavailable." };
+        if (team !== this.activeTeam) return { valid: false, msg: "Not your turn." };
         if (!this.isValid(col, row)) return { valid: false, msg: "Out of bounds." };
         if (this.credits[team] < unitCost) return { valid: false, msg: "Insufficient credits." };
         if (this.getTile(col, row).unit !== null) return { valid: false, msg: "Tile occupied." };
@@ -216,15 +581,14 @@ export class HexGame {
     }
 
     deployUnit(team, type, strength, speed, col, row, isSyncEvent = false) {
+        if (isSyncEvent) {
+            this.ensureLiveState();
+        }
         const u = new Unit(team, type, strength, speed, this.config.flagCost);
         const check = this.canDeploy(team, col, row, u.cost, type === 'flag');
         if (!check.valid) {
             this.logSystem(`Deployment Failed: ${check.msg}`);
             return false;
-        }
-
-        if (!isSyncEvent && this.network) {
-            this.network.sendData({ type: 'DEPLOY', team, unitType: type, str: strength, spd: speed, col, row });
         }
 
         this.credits[team] -= u.cost;
@@ -235,15 +599,45 @@ export class HexGame {
 
         this.logAction(team, `Deployed ${type} unit for ${u.cost} cr.`);
         this.actionUsed = true;
-        this.endTurn(isSyncEvent, true);
-
         this.checkWinConditions();
+        if (!this.winner) this.endTurn(isSyncEvent, true);
+
+        if (!isSyncEvent && this.network) {
+            this.network.recordAndSendTurn({ type: 'DEPLOY', team, unitType: type, str: strength, spd: speed, col, row });
+        }
         return true;
+    }
+
+    getMineIncome(team, viewerTeam = null) {
+        const mineCredit = (this.config && typeof this.config.mineCredit === 'number') ? this.config.mineCredit : 5;
+        if (mineCredit <= 0) return 0;
+
+        let minesHeld = 0;
+        for (let [key, tile] of this.board.entries()) {
+            if (tile && tile.isMine && tile.unit && tile.unit.team === team && tile.unit.type !== 'observation') {
+                if (viewerTeam && viewerTeam !== team) {
+                    const [c, r] = key.split(',').map(Number);
+                    if (!this.canSeeUnit(c, r, viewerTeam)) continue;
+                }
+                minesHeld++;
+            }
+        }
+        return minesHeld * mineCredit;
+    }
+
+    applyMineIncome(team) {
+        const maxCredits = (this.config && typeof this.config.credits === 'number') ? this.config.credits : 100;
+        const bonus = this.getMineIncome(team);
+        if (bonus > 0) {
+            const prev = this.credits[team];
+            this.credits[team] = Math.min(maxCredits, prev + bonus);
+        }
     }
 
     switchPhase() {
         this.activeTeam = this.activeTeam === 'BLUE' ? 'RED' : 'BLUE';
         this.actionUsed = false;
+        this.applyMineIncome(this.activeTeam);
         const currentName = this.activeTeam === 'BLUE' ? this.blueName : this.redName;
         this.logSystem(`${currentName}'s Turn.`);
 
@@ -255,10 +649,12 @@ export class HexGame {
     }
 
     endTurn(isSyncEvent = false, doNotBroadcast = false) {
-        if (this.winner) return;
-
-        if (!isSyncEvent && !doNotBroadcast && this.network) {
-            this.network.sendData({ type: 'SKIP' });
+        if (this.winner) return false;
+        if (isSyncEvent) {
+            this.ensureLiveState();
+        } else if (this.historyIndex !== this.history.length - 1) {
+            this.logSystem("Viewing history. Return to Live state to take actions.");
+            return false;
         }
 
         for (let [k, v] of this.board.entries()) {
@@ -267,10 +663,20 @@ export class HexGame {
             }
         }
 
+        this.applyBarricadeKillZoneDamage(this.activeTeam);
+
         this.invalidateOverlayCache();
-        this.switchPhase();
-        this.saveSnapshot();
-        if (this.onStateChange) this.onStateChange();
+        this.checkWinConditions();
+        if (!this.winner) {
+            this.switchPhase();
+            this.saveSnapshot();
+            if (this.onStateChange) this.onStateChange();
+        }
+
+        if (!isSyncEvent && !doNotBroadcast && this.network) {
+            this.network.recordAndSendTurn({ type: 'SKIP' });
+        }
+        return true;
     }
 
     verifyCaptureSetup() {
@@ -379,14 +785,13 @@ export class HexGame {
     }
 
     moveUnit(startCol, startRow, endCol, endRow, isSyncEvent = false) {
+        if (isSyncEvent) {
+            this.ensureLiveState();
+        }
         if (this.actionUsed || this.phase !== 'MAIN' || this.winner || this.historyIndex !== this.history.length - 1) return false;
         const startTile = this.getTile(startCol, startRow);
-        const u = startTile.unit;
+        const u = startTile ? startTile.unit : null;
         if (!u || u.team !== this.activeTeam) return false;
-
-        if (!isSyncEvent && this.network) {
-            this.network.sendData({ type: 'MOVE', col: startCol, row: startRow, tC: endCol, tR: endRow });
-        }
 
         const path = this.findPath(startCol, startRow, endCol, endRow, u.team, u.speed);
         if (!path) {
@@ -498,6 +903,10 @@ export class HexGame {
         this.invalidateOverlayCache();
         this.checkWinConditions();
         if (!this.winner) this.endTurn(isSyncEvent, true);
+
+        if (!isSyncEvent && this.network) {
+            this.network.recordAndSendTurn({ type: 'MOVE', col: startCol, row: startRow, tC: endCol, tR: endRow });
+        }
         return true;
     }
 
@@ -579,8 +988,11 @@ export class HexGame {
                     return { valid: false, reason: "Barricade touches home colored zones." };
                 }
                 previewSet.add(`${pt.col},${pt.row}`);
-                if (pt.col === col && pt.row === row) continue; // the unit itself
                 const nT = this.getTile(pt.col, pt.row);
+                if (nT && nT.isMine) {
+                    return { valid: false, reason: "Cannot build a barricade on a gold mine." };
+                }
+                if (pt.col === col && pt.row === row) continue; // the unit itself
                 if (nT.unit !== null || nT.isBarricade) {
                     return { valid: false, reason: "Target footprint is already occupied." };
                 }
@@ -612,30 +1024,33 @@ export class HexGame {
     }
 
     createBarricade(col, row, offset, isSyncEvent = false) {
+        if (isSyncEvent) {
+            this.ensureLiveState();
+        }
         const check = this.canBarricade(col, row, offset);
         if (!check.valid) {
             this.logSystem(`Error: ${check.reason}`);
             return false;
         }
 
-        if (!isSyncEvent && this.network) {
-            this.network.sendData({ type: 'BARRICADE', col, row, offset });
-        }
-
         const cost = this.config ? (this.config.barricadeCost || 10) : 10;
         const t = this.getTile(col, row);
         const u = t.unit;
         const footprint = this.getBarricadeFootprint(col, row, u.strength, offset);
+        const barricadeId = `b_${col}_${row}_${this.history.length}`;
 
         // Commit Barricade
         this.credits[this.activeTeam] -= cost;
         // Kill unit
         t.unit = null;
-        // Paint black
+        // Paint barricade tiles with team ownership and group ID
         let previewKeys = new Set();
         for (let pt of footprint) {
             if (this.isValid(pt.col, pt.row)) {
-                this.getTile(pt.col, pt.row).isBarricade = true;
+                const bTile = this.getTile(pt.col, pt.row);
+                bTile.isBarricade = true;
+                bTile.barricadeTeam = this.activeTeam;
+                bTile.barricadeId = barricadeId;
                 previewKeys.add(`${pt.col},${pt.row}`);
             }
         }
@@ -651,6 +1066,7 @@ export class HexGame {
 
         if (this.isValid(obsCol, obsRow)) {
             const obsUnit = new Unit(this.activeTeam, 'observation', 0, 0, 0);
+            obsUnit.barricadeId = barricadeId;
             this.setUnit(obsCol, obsRow, obsUnit);
         }
 
@@ -660,7 +1076,205 @@ export class HexGame {
         this.invalidateOverlayCache();
         this.checkWinConditions();
         if (!this.winner) this.endTurn(isSyncEvent, true);
+
+        if (!isSyncEvent && this.network) {
+            this.network.recordAndSendTurn({ type: 'BARRICADE', col, row, offset });
+        }
         return true;
+    }
+
+    getBarricadeGroupKeys(col, row) {
+        const startTile = this.getTile(col, row);
+        if (!startTile || !startTile.isBarricade) return [];
+
+        const targetId = startTile.barricadeId;
+        const targetTeam = startTile.barricadeTeam;
+
+        if (targetId) {
+            const keys = [];
+            for (let [k, v] of this.board.entries()) {
+                if (v.isBarricade && v.barricadeId === targetId) {
+                    keys.push(k);
+                }
+            }
+            return keys;
+        }
+
+        // Fallback for barricades without barricadeId: contiguous vertical tiles of same team
+        const keys = [`${col},${row}`];
+        let rUp = row - 1;
+        while (this.isValid(col, rUp)) {
+            const nt = this.getTile(col, rUp);
+            if (nt && nt.isBarricade && nt.barricadeTeam === targetTeam && !nt.barricadeId) {
+                keys.push(`${col},${rUp}`);
+                rUp--;
+            } else {
+                break;
+            }
+        }
+        let rDown = row + 1;
+        while (this.isValid(col, rDown)) {
+            const nt = this.getTile(col, rDown);
+            if (nt && nt.isBarricade && nt.barricadeTeam === targetTeam && !nt.barricadeId) {
+                keys.push(`${col},${rDown}`);
+                rDown++;
+            } else {
+                break;
+            }
+        }
+        return keys;
+    }
+
+    canRemoveBarricade(col, row) {
+        if (this.actionUsed || this.phase !== 'MAIN' || this.winner || this.historyIndex !== this.history.length - 1) {
+            return { valid: false, reason: "Action unavailable." };
+        }
+        if (this.config && this.config.barricadeRemovable === false) {
+            return { valid: false, reason: "Barricades are not removable in this game." };
+        }
+        if (!this.isValid(col, row)) {
+            return { valid: false, reason: "Out of bounds." };
+        }
+        const t = this.getTile(col, row);
+        if (!t || !t.isBarricade) {
+            return { valid: false, reason: "Tile is not a barricade." };
+        }
+        if (t.barricadeTeam !== this.activeTeam) {
+            return { valid: false, reason: "You can only remove barricades that you built." };
+        }
+        return { valid: true };
+    }
+
+    removeBarricade(col, row, isSyncEvent = false) {
+        if (isSyncEvent) {
+            this.ensureLiveState();
+        }
+        const check = this.canRemoveBarricade(col, row);
+        if (!check.valid) {
+            this.logSystem(`Error: ${check.reason}`);
+            return false;
+        }
+
+        const t = this.getTile(col, row);
+        const targetId = t.barricadeId;
+        const groupKeys = this.getBarricadeGroupKeys(col, row);
+
+        for (const k of groupKeys) {
+            const bt = this.board.get(k);
+            if (bt) {
+                bt.isBarricade = false;
+                bt.barricadeTeam = null;
+                bt.barricadeId = null;
+            }
+        }
+
+        // Remove the observation unit associated with this barricade
+        if (targetId) {
+            for (let [k, v] of this.board.entries()) {
+                if (v.unit && v.unit.type === 'observation' && v.unit.barricadeId === targetId) {
+                    v.unit = null;
+                }
+            }
+        } else {
+            // Fallback: check adjacent observation unit behind the removed barricade
+            const obsDir = this.activeTeam === 'BLUE' ? -1 : 1;
+            const obsTile = this.getTile(col + obsDir, row);
+            if (obsTile && obsTile.unit && obsTile.unit.type === 'observation' && obsTile.unit.team === this.activeTeam) {
+                obsTile.unit = null;
+            }
+        }
+
+        this.logAction(this.activeTeam, `Removed barricade at [${col},${row}].`);
+        this.actionUsed = true;
+        this.selectedTile = null;
+        this.invalidateOverlayCache();
+        this.checkWinConditions();
+        if (!this.winner) this.endTurn(isSyncEvent, true);
+
+        if (!isSyncEvent && this.network) {
+            this.network.recordAndSendTurn({ type: 'REMOVE_BARRICADE', col, row });
+        }
+        return true;
+    }
+
+    getBarricadeKillZones() {
+        const dangerForBlue = new Set();
+        const dangerForRed = new Set();
+
+        if (this.config && this.config.barricadeKillZone === false) {
+            return { dangerForBlue, dangerForRed };
+        }
+
+        const blueBarricades = [];
+        const redBarricades = [];
+
+        for (let col = 0; col < this.cols; col++) {
+            for (let row = 0; row < this.rows; row++) {
+                const t = this.getTile(col, row);
+                if (t && t.isBarricade) {
+                    if (t.barricadeTeam === 'BLUE') blueBarricades.push({ col, row });
+                    else if (t.barricadeTeam === 'RED') redBarricades.push({ col, row });
+                }
+            }
+        }
+
+        if (blueBarricades.length === 0 && redBarricades.length === 0) {
+            return { dangerForBlue, dangerForRed };
+        }
+
+        for (let col = 0; col < this.cols; col++) {
+            for (let row = 0; row < this.rows; row++) {
+                const t = this.getTile(col, row);
+                if (!t || t.isBarricade) continue;
+                const key = `${col},${row}`;
+
+                for (const b of blueBarricades) {
+                    if (hexMath.offsetDistance(col, row, b.col, b.row) <= 2) {
+                        dangerForRed.add(key);
+                        break;
+                    }
+                }
+                for (const b of redBarricades) {
+                    if (hexMath.offsetDistance(col, row, b.col, b.row) <= 2) {
+                        dangerForBlue.add(key);
+                        break;
+                    }
+                }
+            }
+        }
+
+        return { dangerForBlue, dangerForRed };
+    }
+
+    applyBarricadeKillZoneDamage(team) {
+        if (this.config && this.config.barricadeKillZone === false) return;
+
+        const { dangerForBlue, dangerForRed } = this.getBarricadeKillZones();
+        const dangerSet = team === 'BLUE' ? dangerForBlue : dangerForRed;
+        if (dangerSet.size === 0) return;
+
+        for (const key of dangerSet) {
+            const tile = this.board.get(key);
+            if (!tile || !tile.unit) continue;
+            const u = tile.unit;
+            // Only affect combat units belonging to the team that just finished their turn
+            if (u.team !== team || u.isFlag || u.type === 'observation') continue;
+
+            const [cStr, rStr] = key.split(',');
+            const c = parseInt(cStr, 10);
+            const r = parseInt(rStr, 10);
+
+            u.strength -= 1;
+            if (u.strength <= 0) {
+                tile.pendingDeathVisual = { ...u };
+                tile.unit = null;
+                this.activeCombats.push({ c, r });
+                if (this.onCombat) this.onCombat(c, r);
+                this.logAction(team, `Unit at [${c},${r}] was destroyed by enemy barricade kill zone!`, true);
+            } else {
+                this.logAction(team, `Unit at [${c},${r}] lost 1 Power in enemy barricade kill zone (now ${u.strength}).`, true);
+            }
+        }
     }
 
     getFogOfWar(col, row, perspective, specificUnit = null) {
@@ -835,11 +1449,42 @@ export class HexGame {
         return { spot, inspect, team: u.team };
     }
 
+    getCombinedEnemyVision(viewerTeam) {
+        let spot = new Set();
+        let inspect = new Set();
+
+        for (let col = 0; col < this.cols; col++) {
+            for (let row = 0; row < this.rows; row++) {
+                const t = this.getTile(col, row);
+                if (!t || !t.unit || t.unit.isFlag) continue;
+                const u = t.unit;
+                if (u.team === viewerTeam) continue;
+
+                // Only include enemy units visible to viewerTeam
+                if (u.type !== 'observation' && !this.canSeeUnit(col, row, viewerTeam)) {
+                    continue;
+                }
+
+                const ownKey = `${col},${row}`;
+                spot.add(ownKey);
+                inspect.add(ownKey);
+
+                const v = this.getUnitVision(col, row);
+                for (let k of v.spot) spot.add(k);
+                for (let k of v.inspect) inspect.add(k);
+            }
+        }
+
+        return { spot, inspect };
+    }
+
     checkWinConditions() {
         if (this.winner) return;
 
         let blueFlagCount = 0;
         let redFlagCount = 0;
+        let blueUnitCount = 0;
+        let redUnitCount = 0;
 
         let bInvaded = false;
         let rInvaded = false;
@@ -849,6 +1494,11 @@ export class HexGame {
             for (let row = 0; row < this.rows; row++) {
                 const u = this.getTile(col, row).unit;
                 if (!u) continue;
+
+                if (u.type !== 'observation') {
+                    if (u.team === 'BLUE') blueUnitCount++;
+                    if (u.team === 'RED') redUnitCount++;
+                }
 
                 if (u.isFlag) {
                     if (u.team === 'BLUE') blueFlagCount++;
@@ -864,16 +1514,37 @@ export class HexGame {
                 }
             }
         }
-        if (bInvaded) this.setWinner('BLUE', `${this.blueName} successfully invaded the opponent's zone!`);
-        if (rInvaded) this.setWinner('RED', `${this.redName} successfully invaded the opponent's zone!`);
+        if (bInvaded) {
+            this.setWinner('BLUE', `${this.blueName} successfully invaded the opponent's zone!`);
+            return;
+        }
+        if (rInvaded) {
+            this.setWinner('RED', `${this.redName} successfully invaded the opponent's zone!`);
+            return;
+        }
+
+        const blueEliminated = (blueUnitCount === 0 && this.credits['BLUE'] <= 0);
+        const redEliminated = (redUnitCount === 0 && this.credits['RED'] <= 0);
+
+        if (blueEliminated && redEliminated) {
+            const winTeam = this.activeTeam;
+            const loseName = winTeam === 'BLUE' ? this.redName : this.blueName;
+            this.setWinner(winTeam, `${loseName} has no units and no credits remaining!`);
+        } else if (blueEliminated) {
+            this.setWinner('RED', `${this.blueName} has no units and no credits remaining!`);
+        } else if (redEliminated) {
+            this.setWinner('BLUE', `${this.redName} has no units and no credits remaining!`);
+        }
     }
 
     setWinner(team, reason) {
         this.winner = team;
         this.gameFinished = true;
+        if (this.timerInterval) clearInterval(this.timerInterval);
         const winName = team === 'BLUE' ? this.blueName : this.redName;
         this.logSystem(`GAME OVER. ${winName} wins! ${reason}`);
         this.saveSnapshot();
+        if (this.onStateChange) this.onStateChange();
         if (this.onWinner) this.onWinner(team, reason);
     }
 }

@@ -2,6 +2,7 @@ import { HexGame } from './game.js';
 import { RenderEngine } from './render.js';
 import { InputController } from './input.js';
 import { UIManager } from './ui.js';
+import { NetworkManager } from './network.js';
 import { AIBotV3 } from './ai-v3.js'; // New Influence Map AI
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -15,11 +16,108 @@ document.addEventListener('DOMContentLoaded', () => {
     let GLOBAL_AI = null;
     let GLOBAL_MODE = 'LOCAL';
 
+    window.exitToMenu = () => {
+        try {
+            sessionStorage.removeItem('TPOW_ACTIVE_SESSION');
+        } catch (e) {}
+        if (GLOBAL_NETWORK) {
+            GLOBAL_NETWORK.leaveGame();
+            GLOBAL_NETWORK = null;
+        }
+        window.location.href = window.location.origin + window.location.pathname;
+    };
+
+    window.requestGameRestart = (cfg = null) => {
+        const targetCfg = cfg || (window.gameAPI && window.gameAPI.game ? window.gameAPI.game.config : null);
+        if (GLOBAL_MODE === 'ONLINE' && GLOBAL_NETWORK && GLOBAL_NETWORK.connected) {
+            GLOBAL_NETWORK.triggerNetworkRestart(targetCfg);
+        } else {
+            launchGame(targetCfg);
+        }
+    };
+
+    // Check for active session in sessionStorage (for browser refresh persistence)
+    let savedSession = null;
+    try {
+        const raw = sessionStorage.getItem('TPOW_ACTIVE_SESSION');
+        if (raw) {
+            savedSession = JSON.parse(raw);
+        }
+    } catch (e) {
+        savedSession = null;
+    }
+
     // 1. Check for immediate Guest Invite overrides
     const urlParams = new URLSearchParams(window.location.search);
     const guestHostId = urlParams.get('host');
 
-    if (guestHostId) {
+    // If URL has a DIFFERENT hostId than our saved session, treat as a brand new invite link
+    if (guestHostId && savedSession && (!savedSession.networkInfo || savedSession.networkInfo.hostId !== guestHostId)) {
+        try {
+            sessionStorage.removeItem('TPOW_ACTIVE_SESSION');
+        } catch (e) {}
+        savedSession = null;
+    }
+
+    if (savedSession && savedSession.config) {
+        // Restore active game after browser refresh!
+        mainMenu.classList.add('hidden');
+        configModal.classList.add('hidden');
+        onlineModal.classList.add('hidden');
+        uiLayer.classList.remove('hidden');
+
+        GLOBAL_MODE = savedSession.gameMode || 'LOCAL';
+
+        if (GLOBAL_MODE === 'ONLINE' && savedSession.networkInfo) {
+            const netInfo = savedSession.networkInfo;
+            window.onReceiveNetworkConfig = (remoteConfig, remoteHistory) => {
+                document.getElementById('victory-modal').classList.add('hidden');
+                onlineModal.classList.add('hidden');
+                uiLayer.classList.remove('hidden');
+                launchGame(remoteConfig, true);
+                if (Array.isArray(remoteHistory) && remoteHistory.length > 0 && window.gameAPI && window.gameAPI.game) {
+                    window.gameAPI.game.applyRemoteHistory(remoteHistory);
+                }
+            };
+
+            if (netInfo.isHost) {
+                GLOBAL_NETWORK = new NetworkManager(netInfo.hostId, netInfo.guestName || 'Guest', {
+                    isHost: true,
+                    isReconnect: true,
+                    deferConnect: true
+                });
+                launchGame(savedSession.config, true, savedSession);
+                if (netInfo.hostId) {
+                    GLOBAL_NETWORK.hostGame(netInfo.hostId, true);
+                    if (window.gameAPI && window.gameAPI.game) {
+                        window.gameAPI.game.logSystem("Session restored after refresh. Reconnecting channel...");
+                    }
+                } else {
+                    onlineModal.classList.remove('hidden');
+                    GLOBAL_NETWORK.hostGame();
+                }
+            } else {
+                const guestName = netInfo.guestName || savedSession.redName || 'Guest';
+                GLOBAL_NETWORK = new NetworkManager(netInfo.hostId, guestName, {
+                    isHost: false,
+                    isReconnect: true,
+                    deferConnect: true
+                });
+                launchGame(savedSession.config, true, savedSession);
+                if (netInfo.hostId) {
+                    GLOBAL_NETWORK.joinGame(netInfo.hostId, true);
+                    if (window.gameAPI && window.gameAPI.game) {
+                        window.gameAPI.game.logSystem("Session restored after refresh. Reconnecting to Host...");
+                    }
+                }
+            }
+        } else {
+            launchGame(savedSession.config, true, savedSession);
+            if (window.gameAPI && window.gameAPI.game) {
+                window.gameAPI.game.logSystem("Game restored after page refresh.");
+            }
+        }
+    } else if (guestHostId) {
         mainMenu.classList.add('hidden');
         configModal.classList.add('hidden');
 
@@ -29,16 +127,20 @@ document.addEventListener('DOMContentLoaded', () => {
         if (mContent) mContent.innerHTML = '<h2>Connecting...</h2><p>Waiting for Host Rules...</p>';
 
         GLOBAL_MODE = 'ONLINE';
-        GLOBAL_NETWORK = new NetworkManager(guestHostId);
+        const myName = document.getElementById('player-name').value || 'Guest';
+        GLOBAL_NETWORK = new NetworkManager(guestHostId, myName);
 
         // Wait for config from network instead of launching immediately
-        window.onReceiveNetworkConfig = (remoteConfig) => {
+        window.onReceiveNetworkConfig = (remoteConfig, remoteHistory) => {
+            document.getElementById('victory-modal').classList.add('hidden');
             onlineModal.classList.add('hidden');
             uiLayer.classList.remove('hidden');
-            launchGame(remoteConfig);
-            if (GLOBAL_NETWORK) {
-                GLOBAL_NETWORK.bindEngines(GLOBAL_GAME, GLOBAL_UI);
-                if (GLOBAL_NETWORK.ui) GLOBAL_NETWORK.ui.updateHUD();
+            if (myName && myName !== 'Guest') {
+                remoteConfig.redName = myName;
+            }
+            launchGame(remoteConfig, true);
+            if (Array.isArray(remoteHistory) && remoteHistory.length > 1 && window.gameAPI && window.gameAPI.game) {
+                window.gameAPI.game.applyRemoteHistory(remoteHistory);
             }
         };
     } else {
@@ -98,19 +200,21 @@ document.addEventListener('DOMContentLoaded', () => {
                         const myName = document.getElementById('player-name').value || 'Guest';
                         GLOBAL_NETWORK = new NetworkManager(game.hostId, myName);
 
-                        window.onReceiveNetworkConfig = (remoteConfig) => {
+                        window.onReceiveNetworkConfig = (remoteConfig, remoteHistory) => {
                             document.getElementById('victory-modal').classList.add('hidden');
                             document.getElementById('online-modal').classList.add('hidden');
                             uiLayer.classList.remove('hidden');
                             remoteConfig.redName = myName;
-                            // Engine internally maps NetworkManager when GLOBAL_NETWORK is provided
-                            launchGame(remoteConfig);
+                            launchGame(remoteConfig, true);
+                            if (Array.isArray(remoteHistory) && remoteHistory.length > 1 && window.gameAPI && window.gameAPI.game) {
+                                window.gameAPI.game.applyRemoteHistory(remoteHistory);
+                            }
                         };
                     };
                     lobbyList.appendChild(div);
                 });
             })
-            .catch(err => {
+            .catch(() => {
                 lobbyList.innerHTML = '<p style="color: #ef4444; text-align: center;">Failed to load lobby list.</p>';
             });
     }
@@ -155,12 +259,18 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     window.restartCurrentGame = launchGame;
-    function launchGame(overrideConfig = null) {
+    function launchGame(overrideConfig = null, isRemoteOrRestored = false, restoredSession = null) {
         document.getElementById('victory-modal').classList.add('hidden');
-        let config;
 
+        // Clean up previous game timer if restarting in place
+        if (window.gameAPI && window.gameAPI.game && window.gameAPI.game.timerInterval) {
+            clearInterval(window.gameAPI.game.timerInterval);
+            window.gameAPI.game.timerInterval = null;
+        }
+
+        let config;
         if (overrideConfig) {
-            config = overrideConfig;
+            config = { ...overrideConfig };
         } else {
             // Read configs (or use defaults if bypassed by Online guest)
             let boardW = 30;
@@ -177,15 +287,26 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
+            const remChk = document.getElementById('cfg-barricadeRemovable');
+            const kzChk = document.getElementById('cfg-barricadeKillZone');
+            const numMinesEl = document.getElementById('cfg-numMines');
+            const mineCreditEl = document.getElementById('cfg-mineCredit');
+            const parsedNumMines = (numMinesEl && numMinesEl.value !== '') ? parseInt(numMinesEl.value, 10) : 2;
+            const parsedMineCredit = (mineCreditEl && mineCreditEl.value !== '') ? parseInt(mineCreditEl.value, 10) : 5;
+
             config = {
                 type: document.querySelector('input[name="cfg-type"]:checked') ? document.querySelector('input[name="cfg-type"]:checked').value : 'INVADE',
                 mode: document.querySelector('input[name="cfg-mode"]:checked') ? document.querySelector('input[name="cfg-mode"]:checked').value : 'STANDARD',
                 powerMode: document.querySelector('input[name="cfg-powerMode"]:checked') ? document.querySelector('input[name="cfg-powerMode"]:checked').value : 'DEPLETING',
                 width: boardW,
                 height: boardH,
-                credits: parseInt(document.getElementById('cfg-credits').value) || 50,
+                credits: parseInt(document.getElementById('cfg-credits').value) || 100,
+                numMines: isNaN(parsedNumMines) ? 2 : Math.max(0, parsedNumMines),
+                mineCredit: isNaN(parsedMineCredit) ? 5 : Math.max(0, parsedMineCredit),
                 flagCost: parseInt(document.getElementById('cfg-flagCost').value) || 10,
                 barricadeCost: parseInt(document.getElementById('cfg-barricadeCost').value) || 10,
+                barricadeRemovable: remChk ? remChk.checked : true,
+                barricadeKillZone: kzChk ? kzChk.checked : true,
                 maxStrength: parseInt(document.getElementById('cfg-maxStrength').value) || 10,
                 maxSpeed: parseInt(document.getElementById('cfg-maxSpeed').value) || 5,
                 timerDuration: parseInt(document.querySelector('input[name="cfg-timer"]:checked') ? document.querySelector('input[name="cfg-timer"]:checked').value : '0'),
@@ -196,64 +317,90 @@ document.addEventListener('DOMContentLoaded', () => {
         configModal.classList.add('hidden');
         uiLayer.classList.remove('hidden');
 
-        // Max ranges are now handled dynamically by the buildDeployMatrix method in ui.js
-
-        // Initialize systems
         const canvas = document.getElementById('gameCanvas');
-
         const game = new HexGame(config);
-        const render = new RenderEngine(canvas, game);
-        const input = new InputController(canvas, game, render);
-        const ui = new UIManager(game, render, input);
-
-        game.ui = ui; // Bind explicitly for animation dispatches
-
-        // Attach special engine classes globally so game.js can easily broadcast
         game.gameMode = GLOBAL_MODE;
+
+        let render, input, ui;
+        if (window.gameAPI && window.gameAPI.render && window.gameAPI.input && window.gameAPI.ui) {
+            // Reuse existing Render, Input, and UI instances to avoid duplicate DOM listeners
+            render = window.gameAPI.render;
+            input = window.gameAPI.input;
+            ui = window.gameAPI.ui;
+
+            render.game = game;
+            render.clearExplosions();
+            if (typeof render.clearMoveAnimations === 'function') {
+                render.clearMoveAnimations();
+            }
+            render.centerCamera();
+
+            input.game = game;
+            game.ui = ui;
+            ui.bindGame(game);
+        } else {
+            render = new RenderEngine(canvas, game);
+            input = new InputController(canvas, game, render);
+            ui = new UIManager(game, render, input);
+            game.ui = ui;
+        }
+
         if (GLOBAL_NETWORK) {
             GLOBAL_NETWORK.bindEngines(game, ui);
             ui.network = GLOBAL_NETWORK;
             game.network = GLOBAL_NETWORK;
 
-            if (GLOBAL_NETWORK.isHost && GLOBAL_NETWORK.connected) {
+            if (GLOBAL_NETWORK.isHost && GLOBAL_NETWORK.connected && !isRemoteOrRestored) {
                 GLOBAL_NETWORK.sendData({
-                    type: 'CONFIG',
+                    type: 'RESTART_GAME',
                     config: config
                 });
             }
         }
 
         if (GLOBAL_MODE === 'AI') {
-            // Deploying the freshly unified strict mathematical engine (V1)
             GLOBAL_AI = new AIBotV3(game);
             game.aiBot = GLOBAL_AI;
             game.localTeam = 'BLUE';
         }
 
-        // On game state changes, trigger AI if necessary
+        // On game state changes, reset active UI state, update HUD, and trigger AI if necessary
         game.onStateChange = () => {
+            ui.currentAction = null;
+            game.selectedTile = null;
+            render.validPath = null;
+            ui.closeContextMenu();
             ui.updateHUD();
-            if (GLOBAL_MODE === 'AI' && GLOBAL_AI && game.activeTeam === 'RED') {
+            if (GLOBAL_MODE === 'AI' && GLOBAL_AI && game.activeTeam === 'RED' && !game.winner) {
                 game.logSystem('Computer is thinking...');
                 setTimeout(() => {
-                    if (game.activeTeam === 'RED') {
+                    if (game.activeTeam === 'RED' && !game.winner) {
                         GLOBAL_AI.executeTurn();
                     }
-                }, 600); // Stall execution precisely past the native 500ms DOM interpolation
+                }, 600);
             }
         };
 
-        // Sync initial HUD state
+        if (restoredSession) {
+            game.restoreFromSession(restoredSession);
+        } else {
+            game.logSystem(`Game Started! Grid: ${config.width}x${config.height} | Mode: ${config.mode}`);
+        }
+
+        game.enablePersistence = true;
+        game.saveSessionToStorage();
+
+        // Sync HUD state
+        ui.refreshLog();
         ui.updateHUD();
-        game.logSystem(`Game Started! Grid: ${config.width}x${config.height} | Mode: ${config.mode}`);
 
         window.gameAPI = { game, render, input, ui, network: GLOBAL_NETWORK, ai: GLOBAL_AI };
 
-        // Do not start timer if we are the Host waiting for a Guest to connect.
-        // The NetworkManager will start it when the guest joins.
-        const isWaitingHost = GLOBAL_MODE === 'ONLINE' && (!GLOBAL_NETWORK || GLOBAL_NETWORK.isHost) && !overrideConfig;
-        if (!isWaitingHost && game.timerDuration > 0) {
+        // Start timer unless we are an un-connected Host waiting for a Guest
+        const isWaitingHost = GLOBAL_MODE === 'ONLINE' && (!GLOBAL_NETWORK || !GLOBAL_NETWORK.connected);
+        if (!isWaitingHost && game.timerDuration > 0 && !game.winner) {
             game.startTimer();
         }
     }
 });
+
