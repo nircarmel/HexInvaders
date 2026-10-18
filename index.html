@@ -323,12 +323,13 @@
                                     Speed 1–5, cost = flag cost × speed.</li>
                                 <li style="margin-bottom: 6px;"><b style="color: #fff;">Observation units:</b> Stationary
                                     unit (Power 0, Speed 0) automatically deployed behind a newly built barricade,
-                                    providing long-distance vision over that barricade.</li>
+                                    providing long-distance vision over that barricade. <b>When <i>Removable</i> is
+                                        enabled, killing an observation unit immediately destroys its barricade.</b></li>
                                 <li style="margin-bottom: 6px;"><b style="color: #fff;">Barricade Ownership &amp; Kill
                                         Zone:</b> Barricades are tinted Blue or Red to show which player built them. When
-                                    <i>Kill Zone</i> is enabled, tiles within 2 hexes of an enemy barricade are marked
-                                    with skulls — any enemy unit still standing in this zone at the end of its turn loses
-                                    1 Power (and dies at 0).</li>
+                                    <i>Kill Zone</i> is enabled, tiles within 2 hexes of a barricade are marked
+                                    with skulls in the barricade's color — any enemy unit still standing in this zone at
+                                    the end of its turn loses 1 Power (and dies at 0).</li>
                             </ul>
 
                             <h3 style="color:#34d399; margin: 10px 0 5px 0; font-size: 1.15rem; font-weight: bold;">
@@ -349,7 +350,8 @@
                                             a unit &rarr; Click vacant destination)</i></span></li>
 
                                 <li style="margin-bottom: 12px;"><b style="color: #fff;">💥 Attack Unit:</b> Move your
-                                    own unit into a tile occupied by an enemy unit.<br><span
+                                    own unit into a tile occupied by an enemy unit (when <i>Removable</i> is enabled,
+                                    killing an enemy observation unit also destroys its barricade).<br><span
                                         style="color:#ccc;"><i>(Action: <b>Left-click</b> a unit &rarr; Click enemy
                                             destination)</i></span></li>
 
@@ -361,7 +363,8 @@
 
                                 <li style="margin-bottom: 12px;"><b style="color: #fff;">🔨 Remove Barricade:</b> When
                                     <i>Removable</i> is enabled, the player who built a barricade can spend their turn
-                                    action to demolish it (and its observation unit).<br><span
+                                    action to demolish it (and its observation unit), and killing a barricade's
+                                    observation unit also destroys the barricade.<br><span
                                         style="color:#ccc;"><i>(Action: <b>Click</b> your own barricade tile &rarr;
                                             Select <b>Remove Barricade</b>)</i></span></li>
                             </ul>
@@ -394,9 +397,9 @@
                                         </svg>
                                     </div>
                                     <div>
-                                        <b style="color: #fff;">Visibility Range Overlay:</b> Shows the enemy's combined
-                                        inspect (light gray), spot (dark gray), and dead-spot (black) tiles (when combined
-                                        with Movement Range, reachable bounds appear as Blue/Red border lines).
+                                        <b style="color: #fff;">Visibility Range Overlay:</b> Draws a border line in the
+                                        enemy's color along the furthest boundary of tiles where the enemy can inspect
+                                        your units.
                                     </div>
                                 </li>
 
@@ -840,7 +843,7 @@
                             <span>Cost</span>
                             <input type="number" id="cfg-barricadeCost" value="10" min="1" max="50" class="modern-input" style="width: 54px; padding: 5px 6px; font-size: 0.85rem; text-align: center;">
                         </label>
-                        <label class="radio-label" title="The player who built a barricade can spend a turn action to remove it.">
+                        <label class="radio-label" title="When checked, a barricade can be removed by its creator or destroyed by killing its observation unit.">
                             <input type="checkbox" id="cfg-barricadeRemovable" checked> Removable
                         </label>
                         <label class="radio-label" title="Enemy combat units within 2 tiles of an enemy barricade lose 1 Power at the end of their turn.">
@@ -889,7 +892,7 @@
     </div>
     </div>
 
-    <script src="js/bundle.js?v=1792302525296"></script>
+    <script src="js/bundle.js?v=1792309516099"></script>
 </body>
 
 </html>

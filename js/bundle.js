@@ -999,6 +999,12 @@ class HexGame {
                     targetTile.pendingDeathVisual = { ...defender };
                     targetTile.unit = null;
 
+                    if (defender.type === 'observation') {
+                        if (this.destroyBarricadeForObservationUnit(defender, trgC, trgR)) {
+                            this.logAction(u.team, `Enemy barricade collapsed after its observation unit at [${trgC},${trgR}] was destroyed!`, true);
+                        }
+                    }
+
                     if (this.config.powerMode === 'DEPLETING' && !defender.isFlag && !u.isFlag) {
                         u.strength--;
                         if (u.strength <= 0) {
@@ -1310,18 +1316,12 @@ class HexGame {
         return { valid: true };
     }
 
-    removeBarricade(col, row, isSyncEvent = false) {
-        if (isSyncEvent) {
-            this.ensureLiveState();
-        }
-        const check = this.canRemoveBarricade(col, row);
-        if (!check.valid) {
-            this.logSystem(`Error: ${check.reason}`);
-            return false;
-        }
-
+    demolishBarricade(col, row) {
         const t = this.getTile(col, row);
+        if (!t || !t.isBarricade) return false;
+
         const targetId = t.barricadeId;
+        const barTeam = t.barricadeTeam;
         const groupKeys = this.getBarricadeGroupKeys(col, row);
 
         for (const k of groupKeys) {
@@ -1333,7 +1333,7 @@ class HexGame {
             }
         }
 
-        // Remove the observation unit associated with this barricade
+        // Remove the observation unit associated with this barricade (if still on board)
         if (targetId) {
             for (let [k, v] of this.board.entries()) {
                 if (v.unit && v.unit.type === 'observation' && v.unit.barricadeId === targetId) {
@@ -1342,12 +1342,52 @@ class HexGame {
             }
         } else {
             // Fallback: check adjacent observation unit behind the removed barricade
-            const obsDir = this.activeTeam === 'BLUE' ? -1 : 1;
+            const obsDir = barTeam === 'BLUE' ? -1 : 1;
             const obsTile = this.getTile(col + obsDir, row);
-            if (obsTile && obsTile.unit && obsTile.unit.type === 'observation' && obsTile.unit.team === this.activeTeam) {
+            if (obsTile && obsTile.unit && obsTile.unit.type === 'observation' && obsTile.unit.team === barTeam) {
                 obsTile.unit = null;
             }
         }
+        return true;
+    }
+
+    destroyBarricadeForObservationUnit(obsUnit, obsCol, obsRow) {
+        if (!obsUnit) return false;
+        if (this.config && this.config.barricadeRemovable === false) return false;
+
+        if (obsUnit.barricadeId) {
+            for (let [k, bt] of this.board.entries()) {
+                if (bt && bt.isBarricade && bt.barricadeId === obsUnit.barricadeId) {
+                    const [bCol, bRow] = k.split(',').map(Number);
+                    return this.demolishBarricade(bCol, bRow);
+                }
+            }
+        }
+
+        // Fallback: search in front of the observation unit (towards enemy side) along obsRow
+        const dir = obsUnit.team === 'BLUE' ? 1 : -1;
+        let checkCol = obsCol + dir;
+        while (this.isValid(checkCol, obsRow)) {
+            const bt = this.getTile(checkCol, obsRow);
+            if (bt && bt.isBarricade && bt.barricadeTeam === obsUnit.team) {
+                return this.demolishBarricade(checkCol, obsRow);
+            }
+            checkCol += dir;
+        }
+        return false;
+    }
+
+    removeBarricade(col, row, isSyncEvent = false) {
+        if (isSyncEvent) {
+            this.ensureLiveState();
+        }
+        const check = this.canRemoveBarricade(col, row);
+        if (!check.valid) {
+            this.logSystem(`Error: ${check.reason}`);
+            return false;
+        }
+
+        this.demolishBarricade(col, row);
 
         this.logAction(this.activeTeam, `Removed barricade at [${col},${row}].`);
         this.actionUsed = true;
@@ -1617,30 +1657,36 @@ class HexGame {
     getCombinedEnemyVision(viewerTeam) {
         let spot = new Set();
         let inspect = new Set();
+        let blueInspect = new Set();
+        let redInspect = new Set();
 
         for (let col = 0; col < this.cols; col++) {
             for (let row = 0; row < this.rows; row++) {
                 const t = this.getTile(col, row);
                 if (!t || !t.unit || t.unit.isFlag) continue;
                 const u = t.unit;
-                if (u.team === viewerTeam) continue;
 
                 // Only include enemy units visible to viewerTeam
-                if (u.type !== 'observation' && !this.canSeeUnit(col, row, viewerTeam)) {
+                if (u.team !== viewerTeam && u.type !== 'observation' && !this.canSeeUnit(col, row, viewerTeam)) {
                     continue;
                 }
 
                 const ownKey = `${col},${row}`;
-                spot.add(ownKey);
-                inspect.add(ownKey);
-
                 const v = this.getUnitVision(col, row);
-                for (let k of v.spot) spot.add(k);
-                for (let k of v.inspect) inspect.add(k);
+                const targetSet = u.team === 'BLUE' ? blueInspect : redInspect;
+                targetSet.add(ownKey);
+                for (let k of v.inspect) targetSet.add(k);
+
+                if (u.team !== viewerTeam) {
+                    spot.add(ownKey);
+                    inspect.add(ownKey);
+                    for (let k of v.spot) spot.add(k);
+                    for (let k of v.inspect) inspect.add(k);
+                }
             }
         }
 
-        return { spot, inspect };
+        return { spot, inspect, blueInspect, redInspect };
     }
 
     checkWinConditions() {
@@ -2441,13 +2487,6 @@ class RenderEngine {
             }
         }
 
-        let blueCombinedReach = null;
-        let redCombinedReach = null;
-        if (showMoveOverlay && showVisOverlay) {
-            blueCombinedReach = new Set([...blueThreat, ...blueThreatUncertain]);
-            redCombinedReach = new Set([...redThreat, ...redThreatUncertain]);
-        }
-
         const isAIHeatmapDebug = (this.game.ui && this.game.ui.showAIHeatmap);
 
         let aiTreeKeys = null;
@@ -2485,46 +2524,36 @@ class RenderEngine {
                 if (col === 0) fill = 'rgba(59, 130, 246, 0.3)'; // Brighter Blue zone
                 if (col === this.game.cols - 1) fill = 'rgba(239, 68, 68, 0.3)'; // Brighter Red zone
 
-                // Overlays (Enemy Visibility Overlay vs Movement Range Fill Overlay)
-                if (!isHomeBase) {
-                    if (showVisOverlay && enemyVisionOverlay) {
-                        if (enemyVisionOverlay.inspect.has(key)) {
-                            fill = 'rgba(255, 255, 255, 0.08)';
-                        } else if (enemyVisionOverlay.spot.has(key)) {
-                            fill = 'rgba(255, 255, 255, 0.04)';
-                        } else {
-                            fill = 'rgba(0, 0, 0, 0.2)';
-                        }
-                    } else if (showMoveOverlay) {
-                        let rT = redThreat.has(key);
-                        let bT = blueThreat.has(key);
+                // Movement Range Fill Overlay (Always consistent whether Visibility Overlay is on or off)
+                if (!isHomeBase && showMoveOverlay) {
+                    let rT = redThreat.has(key);
+                    let bT = blueThreat.has(key);
 
-                        let rTU = !rT && redThreatUncertain.has(key);
-                        let bTU = !bT && blueThreatUncertain.has(key);
+                    let rTU = !rT && redThreatUncertain.has(key);
+                    let bTU = !bT && blueThreatUncertain.has(key);
 
-                        if (rT || bT || rTU || bTU) {
-                            let pulse = (Math.sin(Date.now() / 300) + 1) / 2;
+                    if (rT || bT || rTU || bTU) {
+                        let pulse = (Math.sin(Date.now() / 300) + 1) / 2;
 
-                            let wR = rT ? 1 : (rTU ? pulse : 0);
-                            let wB = bT ? 1 : (bTU ? pulse : 0);
+                        let wR = rT ? 1 : (rTU ? pulse : 0);
+                        let wB = bT ? 1 : (bTU ? pulse : 0);
 
-                            let totalW = wR + wB;
-                            if (totalW > 0) {
-                                let pctR = wR / totalW;
-                                let pctB = wB / totalW;
+                        let totalW = wR + wB;
+                        if (totalW > 0) {
+                            let pctR = wR / totalW;
+                            let pctB = wB / totalW;
 
-                                // Severely darken the absolute max luminosity so it reads as a 'dark' hint rather than a neon grid natively
-                                let R = Math.floor(pctR * 210);
-                                let B = Math.floor(pctB * 210);
+                            // Severely darken the absolute max luminosity so it reads as a 'dark' hint rather than a neon grid natively
+                            let R = Math.floor(pctR * 210);
+                            let B = Math.floor(pctB * 210);
 
-                                // Base standard threat projection is 0.10 (subtle faint). 
-                                // Strongest overlap intersection maximizes at 0.15.
-                                let minW = Math.min(wR, wB);
-                                let maxW = Math.max(wR, wB);
-                                let finalAlpha = (0.10 * maxW) + (0.05 * minW);
+                            // Base standard threat projection is 0.10 (subtle faint). 
+                            // Strongest overlap intersection maximizes at 0.15.
+                            let minW = Math.min(wR, wB);
+                            let maxW = Math.max(wR, wB);
+                            let finalAlpha = (0.10 * maxW) + (0.05 * minW);
 
-                                fill = `rgba(${R}, 0, ${B}, ${finalAlpha.toFixed(3)})`;
-                            }
+                            fill = `rgba(${R}, 0, ${B}, ${finalAlpha.toFixed(3)})`;
                         }
                     }
                 }
@@ -2629,32 +2658,19 @@ class RenderEngine {
                     this.drawHex(pt.x, pt.y, this.hexRadius - 1, 'rgba(0, 0, 0, 0.9)', stroke, lineWidth);
                 }
 
-                // When both Movement and Visibility overlays are active, draw combined Blue and Red movement outer perimeter lines
-                if (showMoveOverlay && showVisOverlay) {
-                    const inBlue = blueCombinedReach && blueCombinedReach.has(key);
-                    const inRed = redCombinedReach && redCombinedReach.has(key);
-                    if (inBlue || inRed) {
-                        const ax = hexMath.offsetToAxial(col, row);
-                        const blueStroke = 'rgba(137, 180, 249, 0.95)';
-                        const redStroke = 'rgba(245, 143, 143, 0.95)';
-                        for (let d = 0; d < 6; d++) {
-                            let dir = hexMath.hexDirections[d];
-                            const nAx = { q: ax.q + dir.dq, r: ax.r + dir.dr };
-                            const nOff = hexMath.axialToOffset(nAx.q, nAx.r);
-                            let nKey = `${nOff.col},${nOff.row}`;
+                // Visibility Overlay: draw a thick line in the enemy's range color on the border of tiles the enemy can inspect
+                if (showVisOverlay && enemyVisionOverlay && enemyVisionOverlay.inspect.has(key)) {
+                    const enemyLineColor = viewerTeam === 'BLUE' ? 'rgba(210, 0, 0, 0.75)' : 'rgba(0, 0, 210, 0.75)';
+                    const ax = hexMath.offsetToAxial(col, row);
+                    for (let d = 0; d < 6; d++) {
+                        let dir = hexMath.hexDirections[d];
+                        const nAx = { q: ax.q + dir.dq, r: ax.r + dir.dr };
+                        const nOff = hexMath.axialToOffset(nAx.q, nAx.r);
+                        let nKey = `${nOff.col},${nOff.row}`;
+
+                        if (this.game.isValid(nOff.col, nOff.row) && !enemyVisionOverlay.inspect.has(nKey)) {
                             let segI = (6 - d) % 6;
-
-                            const isBlueBorder = inBlue && !blueCombinedReach.has(nKey);
-                            const isRedBorder = inRed && !redCombinedReach.has(nKey);
-
-                            if (isBlueBorder && isRedBorder) {
-                                this.drawHexSegment(pt.x, pt.y, this.hexRadius - 1, blueStroke, 3.5, segI);
-                                this.drawHexSegment(pt.x, pt.y, this.hexRadius - 4.5, redStroke, 3.5, segI);
-                            } else if (isBlueBorder) {
-                                this.drawHexSegment(pt.x, pt.y, this.hexRadius - 1, blueStroke, 3.5, segI);
-                            } else if (isRedBorder) {
-                                this.drawHexSegment(pt.x, pt.y, this.hexRadius - 1, redStroke, 3.5, segI);
-                            }
+                            this.drawHexSegment(pt.x, pt.y, this.hexRadius - 1, enemyLineColor, 4, segI);
                         }
                     }
                 }
@@ -2735,22 +2751,22 @@ class RenderEngine {
                     }
                 }
 
-                // Draw Barricade Kill Zone Skull Indicator(s)
+                // Draw Barricade Kill Zone Skull Indicator(s) (colored by the attacking barricade's team)
                 if (!tile.isBarricade) {
-                    const isBlueKill = killZones.dangerForBlue.has(key);
-                    const isRedKill = killZones.dangerForRed.has(key);
+                    const isBlueBarricadeZone = killZones.dangerForRed.has(key);
+                    const isRedBarricadeZone = killZones.dangerForBlue.has(key);
 
-                    if (isBlueKill || isRedKill) {
+                    if (isBlueBarricadeZone || isRedBarricadeZone) {
                         const skullSize = Math.max(4.5, this.hexRadius * 0.24);
                         const skullY = baseUnit ? (pt.y + this.hexRadius * 0.56) : pt.y;
 
-                        if (isBlueKill && isRedKill) {
+                        if (isBlueBarricadeZone && isRedBarricadeZone) {
                             const offsetX = skullSize * 0.95;
                             this.drawSkullIcon(pt.x - offsetX, skullY, skullSize, 'BLUE');
                             this.drawSkullIcon(pt.x + offsetX, skullY, skullSize, 'RED');
-                        } else if (isBlueKill) {
+                        } else if (isBlueBarricadeZone) {
                             this.drawSkullIcon(pt.x, skullY, skullSize, 'BLUE');
-                        } else if (isRedKill) {
+                        } else if (isRedBarricadeZone) {
                             this.drawSkullIcon(pt.x, skullY, skullSize, 'RED');
                         }
                     }
@@ -5250,6 +5266,7 @@ class AIBotV3 {
                 gameMode: existingState.gameMode,
                 flagCost: existingState.flagCost,
                 barricades: new Set(existingState.barricades || []),
+                barricadeGroups: existingState.barricadeGroups ? new Map(existingState.barricadeGroups) : new Map(),
                 units: (existingState.units || []).map(u => ({ ...u }))
             };
         }
@@ -5263,14 +5280,22 @@ class AIBotV3 {
             gameMode: this.game.type, // 'INVADE' or 'PLANT'
             flagCost: this.game.config ? this.game.config.flagCost : 10,
             units: [],
-            barricades: new Set()
+            barricades: new Set(),
+            barricadeGroups: new Map()
         };
 
         for (let col = 0; col < this.game.cols; col++) {
             for (let row = 0; row < this.game.rows; row++) {
                 const t = this.game.getTile(col, row);
                 if (t.isBarricade) {
-                    state.barricades.add(`${col},${row}`);
+                    const bKey = `${col},${row}`;
+                    state.barricades.add(bKey);
+                    if (t.barricadeId) {
+                        if (!state.barricadeGroups.has(t.barricadeId)) {
+                            state.barricadeGroups.set(t.barricadeId, []);
+                        }
+                        state.barricadeGroups.get(t.barricadeId).push(bKey);
+                    }
                 }
                 if (t.unit) {
                     state.units.push({
@@ -5281,7 +5306,8 @@ class AIBotV3 {
                         power: t.unit.strength,
                         speed: t.unit.speed,
                         type: t.unit.type,
-                        isFlag: t.unit.isFlag
+                        isFlag: t.unit.isFlag,
+                        barricadeId: t.unit.barricadeId || null
                     });
                 }
             }
@@ -5379,7 +5405,8 @@ class AIBotV3 {
             gameMode: state.gameMode,
             flagCost: state.flagCost,
             units: state.units.map(u => ({ ...u })),
-            barricades: state.barricades
+            barricades: state.barricades,
+            barricadeGroups: state.barricadeGroups
         };
 
         if (action.type === 'SKIP') {
@@ -5394,6 +5421,13 @@ class AIBotV3 {
                     let defender = nextState.units[targetIdx];
                     if (u.power >= defender.power) {
                         nextState.units.splice(targetIdx, 1);
+                        const isRemovable = (!this.game || !this.game.config || this.game.config.barricadeRemovable !== false);
+                        if (isRemovable && defender.type === 'observation' && defender.barricadeId && state.barricadeGroups && state.barricadeGroups.has(defender.barricadeId)) {
+                            nextState.barricades = new Set(state.barricades);
+                            for (const bk of state.barricadeGroups.get(defender.barricadeId)) {
+                                nextState.barricades.delete(bk);
+                            }
+                        }
                         u.power -= 1;
                         if (u.power <= 0) {
                             nextState.units = nextState.units.filter(un => un !== u);

@@ -49,6 +49,7 @@ export class AIBotV3 {
                 gameMode: existingState.gameMode,
                 flagCost: existingState.flagCost,
                 barricades: new Set(existingState.barricades || []),
+                barricadeGroups: existingState.barricadeGroups ? new Map(existingState.barricadeGroups) : new Map(),
                 units: (existingState.units || []).map(u => ({ ...u }))
             };
         }
@@ -62,14 +63,22 @@ export class AIBotV3 {
             gameMode: this.game.type, // 'INVADE' or 'PLANT'
             flagCost: this.game.config ? this.game.config.flagCost : 10,
             units: [],
-            barricades: new Set()
+            barricades: new Set(),
+            barricadeGroups: new Map()
         };
 
         for (let col = 0; col < this.game.cols; col++) {
             for (let row = 0; row < this.game.rows; row++) {
                 const t = this.game.getTile(col, row);
                 if (t.isBarricade) {
-                    state.barricades.add(`${col},${row}`);
+                    const bKey = `${col},${row}`;
+                    state.barricades.add(bKey);
+                    if (t.barricadeId) {
+                        if (!state.barricadeGroups.has(t.barricadeId)) {
+                            state.barricadeGroups.set(t.barricadeId, []);
+                        }
+                        state.barricadeGroups.get(t.barricadeId).push(bKey);
+                    }
                 }
                 if (t.unit) {
                     state.units.push({
@@ -80,7 +89,8 @@ export class AIBotV3 {
                         power: t.unit.strength,
                         speed: t.unit.speed,
                         type: t.unit.type,
-                        isFlag: t.unit.isFlag
+                        isFlag: t.unit.isFlag,
+                        barricadeId: t.unit.barricadeId || null
                     });
                 }
             }
@@ -178,7 +188,8 @@ export class AIBotV3 {
             gameMode: state.gameMode,
             flagCost: state.flagCost,
             units: state.units.map(u => ({ ...u })),
-            barricades: state.barricades
+            barricades: state.barricades,
+            barricadeGroups: state.barricadeGroups
         };
 
         if (action.type === 'SKIP') {
@@ -193,6 +204,13 @@ export class AIBotV3 {
                     let defender = nextState.units[targetIdx];
                     if (u.power >= defender.power) {
                         nextState.units.splice(targetIdx, 1);
+                        const isRemovable = (!this.game || !this.game.config || this.game.config.barricadeRemovable !== false);
+                        if (isRemovable && defender.type === 'observation' && defender.barricadeId && state.barricadeGroups && state.barricadeGroups.has(defender.barricadeId)) {
+                            nextState.barricades = new Set(state.barricades);
+                            for (const bk of state.barricadeGroups.get(defender.barricadeId)) {
+                                nextState.barricades.delete(bk);
+                            }
+                        }
                         u.power -= 1;
                         if (u.power <= 0) {
                             nextState.units = nextState.units.filter(un => un !== u);

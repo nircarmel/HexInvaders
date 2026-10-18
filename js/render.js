@@ -574,13 +574,6 @@ export class RenderEngine {
             }
         }
 
-        let blueCombinedReach = null;
-        let redCombinedReach = null;
-        if (showMoveOverlay && showVisOverlay) {
-            blueCombinedReach = new Set([...blueThreat, ...blueThreatUncertain]);
-            redCombinedReach = new Set([...redThreat, ...redThreatUncertain]);
-        }
-
         const isAIHeatmapDebug = (this.game.ui && this.game.ui.showAIHeatmap);
 
         let aiTreeKeys = null;
@@ -618,46 +611,36 @@ export class RenderEngine {
                 if (col === 0) fill = 'rgba(59, 130, 246, 0.3)'; // Brighter Blue zone
                 if (col === this.game.cols - 1) fill = 'rgba(239, 68, 68, 0.3)'; // Brighter Red zone
 
-                // Overlays (Enemy Visibility Overlay vs Movement Range Fill Overlay)
-                if (!isHomeBase) {
-                    if (showVisOverlay && enemyVisionOverlay) {
-                        if (enemyVisionOverlay.inspect.has(key)) {
-                            fill = 'rgba(255, 255, 255, 0.08)';
-                        } else if (enemyVisionOverlay.spot.has(key)) {
-                            fill = 'rgba(255, 255, 255, 0.04)';
-                        } else {
-                            fill = 'rgba(0, 0, 0, 0.2)';
-                        }
-                    } else if (showMoveOverlay) {
-                        let rT = redThreat.has(key);
-                        let bT = blueThreat.has(key);
+                // Movement Range Fill Overlay (Always consistent whether Visibility Overlay is on or off)
+                if (!isHomeBase && showMoveOverlay) {
+                    let rT = redThreat.has(key);
+                    let bT = blueThreat.has(key);
 
-                        let rTU = !rT && redThreatUncertain.has(key);
-                        let bTU = !bT && blueThreatUncertain.has(key);
+                    let rTU = !rT && redThreatUncertain.has(key);
+                    let bTU = !bT && blueThreatUncertain.has(key);
 
-                        if (rT || bT || rTU || bTU) {
-                            let pulse = (Math.sin(Date.now() / 300) + 1) / 2;
+                    if (rT || bT || rTU || bTU) {
+                        let pulse = (Math.sin(Date.now() / 300) + 1) / 2;
 
-                            let wR = rT ? 1 : (rTU ? pulse : 0);
-                            let wB = bT ? 1 : (bTU ? pulse : 0);
+                        let wR = rT ? 1 : (rTU ? pulse : 0);
+                        let wB = bT ? 1 : (bTU ? pulse : 0);
 
-                            let totalW = wR + wB;
-                            if (totalW > 0) {
-                                let pctR = wR / totalW;
-                                let pctB = wB / totalW;
+                        let totalW = wR + wB;
+                        if (totalW > 0) {
+                            let pctR = wR / totalW;
+                            let pctB = wB / totalW;
 
-                                // Severely darken the absolute max luminosity so it reads as a 'dark' hint rather than a neon grid natively
-                                let R = Math.floor(pctR * 210);
-                                let B = Math.floor(pctB * 210);
+                            // Severely darken the absolute max luminosity so it reads as a 'dark' hint rather than a neon grid natively
+                            let R = Math.floor(pctR * 210);
+                            let B = Math.floor(pctB * 210);
 
-                                // Base standard threat projection is 0.10 (subtle faint). 
-                                // Strongest overlap intersection maximizes at 0.15.
-                                let minW = Math.min(wR, wB);
-                                let maxW = Math.max(wR, wB);
-                                let finalAlpha = (0.10 * maxW) + (0.05 * minW);
+                            // Base standard threat projection is 0.10 (subtle faint). 
+                            // Strongest overlap intersection maximizes at 0.15.
+                            let minW = Math.min(wR, wB);
+                            let maxW = Math.max(wR, wB);
+                            let finalAlpha = (0.10 * maxW) + (0.05 * minW);
 
-                                fill = `rgba(${R}, 0, ${B}, ${finalAlpha.toFixed(3)})`;
-                            }
+                            fill = `rgba(${R}, 0, ${B}, ${finalAlpha.toFixed(3)})`;
                         }
                     }
                 }
@@ -762,32 +745,19 @@ export class RenderEngine {
                     this.drawHex(pt.x, pt.y, this.hexRadius - 1, 'rgba(0, 0, 0, 0.9)', stroke, lineWidth);
                 }
 
-                // When both Movement and Visibility overlays are active, draw combined Blue and Red movement outer perimeter lines
-                if (showMoveOverlay && showVisOverlay) {
-                    const inBlue = blueCombinedReach && blueCombinedReach.has(key);
-                    const inRed = redCombinedReach && redCombinedReach.has(key);
-                    if (inBlue || inRed) {
-                        const ax = hexMath.offsetToAxial(col, row);
-                        const blueStroke = 'rgba(137, 180, 249, 0.95)';
-                        const redStroke = 'rgba(245, 143, 143, 0.95)';
-                        for (let d = 0; d < 6; d++) {
-                            let dir = hexMath.hexDirections[d];
-                            const nAx = { q: ax.q + dir.dq, r: ax.r + dir.dr };
-                            const nOff = hexMath.axialToOffset(nAx.q, nAx.r);
-                            let nKey = `${nOff.col},${nOff.row}`;
+                // Visibility Overlay: draw a thick line in the enemy's range color on the border of tiles the enemy can inspect
+                if (showVisOverlay && enemyVisionOverlay && enemyVisionOverlay.inspect.has(key)) {
+                    const enemyLineColor = viewerTeam === 'BLUE' ? 'rgba(210, 0, 0, 0.75)' : 'rgba(0, 0, 210, 0.75)';
+                    const ax = hexMath.offsetToAxial(col, row);
+                    for (let d = 0; d < 6; d++) {
+                        let dir = hexMath.hexDirections[d];
+                        const nAx = { q: ax.q + dir.dq, r: ax.r + dir.dr };
+                        const nOff = hexMath.axialToOffset(nAx.q, nAx.r);
+                        let nKey = `${nOff.col},${nOff.row}`;
+
+                        if (this.game.isValid(nOff.col, nOff.row) && !enemyVisionOverlay.inspect.has(nKey)) {
                             let segI = (6 - d) % 6;
-
-                            const isBlueBorder = inBlue && !blueCombinedReach.has(nKey);
-                            const isRedBorder = inRed && !redCombinedReach.has(nKey);
-
-                            if (isBlueBorder && isRedBorder) {
-                                this.drawHexSegment(pt.x, pt.y, this.hexRadius - 1, blueStroke, 3.5, segI);
-                                this.drawHexSegment(pt.x, pt.y, this.hexRadius - 4.5, redStroke, 3.5, segI);
-                            } else if (isBlueBorder) {
-                                this.drawHexSegment(pt.x, pt.y, this.hexRadius - 1, blueStroke, 3.5, segI);
-                            } else if (isRedBorder) {
-                                this.drawHexSegment(pt.x, pt.y, this.hexRadius - 1, redStroke, 3.5, segI);
-                            }
+                            this.drawHexSegment(pt.x, pt.y, this.hexRadius - 1, enemyLineColor, 4, segI);
                         }
                     }
                 }
@@ -868,22 +838,22 @@ export class RenderEngine {
                     }
                 }
 
-                // Draw Barricade Kill Zone Skull Indicator(s)
+                // Draw Barricade Kill Zone Skull Indicator(s) (colored by the attacking barricade's team)
                 if (!tile.isBarricade) {
-                    const isBlueKill = killZones.dangerForBlue.has(key);
-                    const isRedKill = killZones.dangerForRed.has(key);
+                    const isBlueBarricadeZone = killZones.dangerForRed.has(key);
+                    const isRedBarricadeZone = killZones.dangerForBlue.has(key);
 
-                    if (isBlueKill || isRedKill) {
+                    if (isBlueBarricadeZone || isRedBarricadeZone) {
                         const skullSize = Math.max(4.5, this.hexRadius * 0.24);
                         const skullY = baseUnit ? (pt.y + this.hexRadius * 0.56) : pt.y;
 
-                        if (isBlueKill && isRedKill) {
+                        if (isBlueBarricadeZone && isRedBarricadeZone) {
                             const offsetX = skullSize * 0.95;
                             this.drawSkullIcon(pt.x - offsetX, skullY, skullSize, 'BLUE');
                             this.drawSkullIcon(pt.x + offsetX, skullY, skullSize, 'RED');
-                        } else if (isBlueKill) {
+                        } else if (isBlueBarricadeZone) {
                             this.drawSkullIcon(pt.x, skullY, skullSize, 'BLUE');
-                        } else if (isRedKill) {
+                        } else if (isRedBarricadeZone) {
                             this.drawSkullIcon(pt.x, skullY, skullSize, 'RED');
                         }
                     }

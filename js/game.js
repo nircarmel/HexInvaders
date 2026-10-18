@@ -834,6 +834,12 @@ export class HexGame {
                     targetTile.pendingDeathVisual = { ...defender };
                     targetTile.unit = null;
 
+                    if (defender.type === 'observation') {
+                        if (this.destroyBarricadeForObservationUnit(defender, trgC, trgR)) {
+                            this.logAction(u.team, `Enemy barricade collapsed after its observation unit at [${trgC},${trgR}] was destroyed!`, true);
+                        }
+                    }
+
                     if (this.config.powerMode === 'DEPLETING' && !defender.isFlag && !u.isFlag) {
                         u.strength--;
                         if (u.strength <= 0) {
@@ -1145,18 +1151,12 @@ export class HexGame {
         return { valid: true };
     }
 
-    removeBarricade(col, row, isSyncEvent = false) {
-        if (isSyncEvent) {
-            this.ensureLiveState();
-        }
-        const check = this.canRemoveBarricade(col, row);
-        if (!check.valid) {
-            this.logSystem(`Error: ${check.reason}`);
-            return false;
-        }
-
+    demolishBarricade(col, row) {
         const t = this.getTile(col, row);
+        if (!t || !t.isBarricade) return false;
+
         const targetId = t.barricadeId;
+        const barTeam = t.barricadeTeam;
         const groupKeys = this.getBarricadeGroupKeys(col, row);
 
         for (const k of groupKeys) {
@@ -1168,7 +1168,7 @@ export class HexGame {
             }
         }
 
-        // Remove the observation unit associated with this barricade
+        // Remove the observation unit associated with this barricade (if still on board)
         if (targetId) {
             for (let [k, v] of this.board.entries()) {
                 if (v.unit && v.unit.type === 'observation' && v.unit.barricadeId === targetId) {
@@ -1177,12 +1177,52 @@ export class HexGame {
             }
         } else {
             // Fallback: check adjacent observation unit behind the removed barricade
-            const obsDir = this.activeTeam === 'BLUE' ? -1 : 1;
+            const obsDir = barTeam === 'BLUE' ? -1 : 1;
             const obsTile = this.getTile(col + obsDir, row);
-            if (obsTile && obsTile.unit && obsTile.unit.type === 'observation' && obsTile.unit.team === this.activeTeam) {
+            if (obsTile && obsTile.unit && obsTile.unit.type === 'observation' && obsTile.unit.team === barTeam) {
                 obsTile.unit = null;
             }
         }
+        return true;
+    }
+
+    destroyBarricadeForObservationUnit(obsUnit, obsCol, obsRow) {
+        if (!obsUnit) return false;
+        if (this.config && this.config.barricadeRemovable === false) return false;
+
+        if (obsUnit.barricadeId) {
+            for (let [k, bt] of this.board.entries()) {
+                if (bt && bt.isBarricade && bt.barricadeId === obsUnit.barricadeId) {
+                    const [bCol, bRow] = k.split(',').map(Number);
+                    return this.demolishBarricade(bCol, bRow);
+                }
+            }
+        }
+
+        // Fallback: search in front of the observation unit (towards enemy side) along obsRow
+        const dir = obsUnit.team === 'BLUE' ? 1 : -1;
+        let checkCol = obsCol + dir;
+        while (this.isValid(checkCol, obsRow)) {
+            const bt = this.getTile(checkCol, obsRow);
+            if (bt && bt.isBarricade && bt.barricadeTeam === obsUnit.team) {
+                return this.demolishBarricade(checkCol, obsRow);
+            }
+            checkCol += dir;
+        }
+        return false;
+    }
+
+    removeBarricade(col, row, isSyncEvent = false) {
+        if (isSyncEvent) {
+            this.ensureLiveState();
+        }
+        const check = this.canRemoveBarricade(col, row);
+        if (!check.valid) {
+            this.logSystem(`Error: ${check.reason}`);
+            return false;
+        }
+
+        this.demolishBarricade(col, row);
 
         this.logAction(this.activeTeam, `Removed barricade at [${col},${row}].`);
         this.actionUsed = true;
@@ -1452,30 +1492,36 @@ export class HexGame {
     getCombinedEnemyVision(viewerTeam) {
         let spot = new Set();
         let inspect = new Set();
+        let blueInspect = new Set();
+        let redInspect = new Set();
 
         for (let col = 0; col < this.cols; col++) {
             for (let row = 0; row < this.rows; row++) {
                 const t = this.getTile(col, row);
                 if (!t || !t.unit || t.unit.isFlag) continue;
                 const u = t.unit;
-                if (u.team === viewerTeam) continue;
 
                 // Only include enemy units visible to viewerTeam
-                if (u.type !== 'observation' && !this.canSeeUnit(col, row, viewerTeam)) {
+                if (u.team !== viewerTeam && u.type !== 'observation' && !this.canSeeUnit(col, row, viewerTeam)) {
                     continue;
                 }
 
                 const ownKey = `${col},${row}`;
-                spot.add(ownKey);
-                inspect.add(ownKey);
-
                 const v = this.getUnitVision(col, row);
-                for (let k of v.spot) spot.add(k);
-                for (let k of v.inspect) inspect.add(k);
+                const targetSet = u.team === 'BLUE' ? blueInspect : redInspect;
+                targetSet.add(ownKey);
+                for (let k of v.inspect) targetSet.add(k);
+
+                if (u.team !== viewerTeam) {
+                    spot.add(ownKey);
+                    inspect.add(ownKey);
+                    for (let k of v.spot) spot.add(k);
+                    for (let k of v.inspect) inspect.add(k);
+                }
             }
         }
 
-        return { spot, inspect };
+        return { spot, inspect, blueInspect, redInspect };
     }
 
     checkWinConditions() {
